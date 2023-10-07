@@ -24,10 +24,10 @@ typedef uint64_t UINT64;
 #define OK 0
 
 
-#define XDFS_BYTE_ORDER LITTLE_BYTE_ORDER	/* Ä¬ÈÏĞ¡¶Ë×Ö½ÚĞò */ 
+#define XDFS_BYTE_ORDER LITTLE_BYTE_ORDER	/* é»˜è®¤å°ç«¯å­—èŠ‚åº */ 
 
-const int blksize = 4096;	/* Ò»¸ö¿é4KB */ 
-const int nblks = 32768;	/* Ò»¹²32768¸ö¿é£¬128MB */ 
+const int blksize = 4096;	/* ä¸€ä¸ªå—4KB */ 
+const int nblks = 32768;	/* ä¸€å…±32768ä¸ªå—ï¼Œ128MB */ 
 
 
 /*************************PBR_DEFINE*************************/
@@ -36,33 +36,27 @@ const int nblks = 32768;	/* Ò»¹²32768¸ö¿é£¬128MB */
 #define PBR_SYS_ID          0x03	/* system ID string     (8 bytes) */
 #define PBR_BYTES_PER_BLK   0x0b	/* bytes per block      (2 bytes) */
 #define PBR_NUM_BLKS        0x20	/* # of blocks on vol   (4 bytes) */
-#define PBR_NBLKS 1	/*¡¡PBRºÜĞ¡£¬£±¿é¾Í¹»ÁË¡¡*/ 
+#define PBR_NBLKS 1					/*ã€€PBRå¾ˆå°ï¼Œï¼‘å—å°±å¤Ÿäº†ã€€*/ 
 
 
 /*************************FSB_DEFINE*************************/
 
 
-#define FSB_NBLKS 1	/* 4096 * 8 = 37268,ËùÒÔÓÃÒ»¿éÕıºÃ¿ÉÒÔ×öÎÄ¼şÏµÍ³µÃFSB */ 
+#define FSB_NBLKS 1	/* 4096 * 8 = 37268,æ‰€ä»¥ç”¨ä¸€å—æ­£å¥½å¯ä»¥åšæ–‡ä»¶ç³»ç»Ÿçš„FSB */ 
 
 
 /*************************FIB_DEFINE*************************/
 
-#define FIB_NBLKS 1	/*¡¡Ò»¹²4096¸öinode£¬1¿é¾Í¹»ÁË¡¡*/
+#define FIB_NBLKS 1	/*ã€€ä¸€å…±4096ä¸ªinodeï¼Œ1å—å°±å¤Ÿäº†ã€€*/
 
 
 /*************************INODE_SET_DEFINE*************************/
 
 
-#define INODE_SET_NBLKS 120	/* Ò»¸öinodeÊı¾İ½á¹¹120×Ö½Ú£¬ËùÒÔĞèÒª120¸ö¿é */
-#define INODE_NUMS  4096	/* Ò»¹²4096¸öinode */
-
-typedef struct _Vx_dlnode
-    {
-    struct _Vx_dlnode *next;
-    struct _Vx_dlnode *previous;
-    } _Vx_DL_NODE;
+#define INODE_SET_NBLKS 120	/* ä¸€ä¸ªinodeæ•°æ®ç»“æ„120å­—èŠ‚ï¼Œæ‰€ä»¥éœ€è¦120ä¸ªå— */
+#define INODE_NUMS  4096	/* ä¸€å…±4096ä¸ªinode */
+#define XDFS_DIRECT_BLOCKS 16	/* The max num of blks a inode can have */
     
-typedef _Vx_DL_NODE DL_NODE;
 typedef INT64   xdfsTime_t;
 typedef INT64	fsize_t;
 typedef UINT32  fgen_t;
@@ -70,176 +64,79 @@ typedef UINT32  fid_t;
 typedef UINT16  linkCount_t;
 typedef UINT16  fmode_t;
 
-typedef struct xdfs_incore_inode
-    {
-    xdfsTime_t  ctime;       /* The last time the file attributes */
-                             /* (inode) were changed. */
-    xdfsTime_t  mtime;       /* The last time the file data was changed */
-    xdfsTime_t  atime;       /* The last time the file data was accessed */
-    fsize_t     size;        /* The size of the file */
-    fgen_t      generation;  /* # of times inode has been allocated */
-    fid_t       uid;         /* UID of value of the owner of the file */
-    fid_t       gid;         /* GID of value of the owner of the file */
-    UINT32      nBlocks;     /* The number of blocks associated with inode */
-    UINT32      indirect[4]; /* Direct & Indirect block references */
-    linkCount_t linkCount;   /* Number of hard links to file */
-    fmode_t     mode;        /* Mode bits for file */
-    unsigned char      state;       /* State:  free, allocated, to be deleted */
-    UINT32	version;     /* version format of on-disk inode */
-    } XDFS_INCORE_INODE, * XDFS_INCORE_INODE_PTR;
-    
-typedef struct xdfs_alloc_pos
-    {
-    UINT32     lastAllocPhyBlkNum;    
-    } XDFS_ALLOC_POS, * XDFS_ALLOC_POS_PTR;
-    
-typedef struct xdfs_inode_struct
-    {
-    DL_NODE             delNode;       
-    XDFS_INCORE_INODE   iNodeData;
-    UINT32              iNodeNumber;
-    UINT32              dirSlot;        
-    UINT32              dirInode;       
-    UINT32              dirDelSlot;     
-    UINT32              dirRenameSlot;  
-    XDFS_ALLOC_POS      iAllocPos;      
-    } XDFS_INODE, * XDFS_INODE_PTR;
+struct xdfs_inode
+{
+    umode_t mode;						/* IS directory?  */
+    uid_t uid; 						/* User id */
+    gid_t gid;						/* User group id */
+    unsigned long inode_no;				/* Stat data, not accessed from path walking, the unique label of the inode */
+    unsigned int num_link;				/* The num of the hard link  */
+    loff_t file_size;					/* The file size in bytes */
+    struct timespec ctime;      		/* The last time the file attributes */
+    struct timespec mtime;      		/* The last time the file data was changed */
+    struct timespec atime;      		/* The last time the file data was accessed */
+    unsigned int block_size_in_bit;				/* The size of the block in bits */
+    blkcnt_t using_block_num;					/* The num of blks file using */
+    unsigned long state;				/* State flag  */
+    atomic_t inode_count;					/* Inode reference count  */
+
+    UINT32 addr[XDFS_DIRECT_BLOCKS]	/* Store the address */
+};
 
 
-/*************************INODE_LOG_DEFINE*************************/
+/*************************INODE_LOG_DEFINE*****************/
 
-#define INODE_LOG_NBLKS 1 /* INODE_LOGµÄ´óĞ¡Ç¡ºÃÎª512×Ö½Ú£¬Òò´ËÕ¼ÓÃ1¸ö¿é */
+#define INODE_LOG_NBLKS 1 /* INODE_LOGçš„å¤§å°æ°å¥½ä¸º512å­—èŠ‚ï¼Œå› æ­¤å ç”¨1ä¸ªå— */
 
-/*
-typedef struct xdfs_inode_log_struct
-    {
-    UINT64          transNumber;                        
-    UINT32          iNodeNumber[INODE_JOURNAL_ENTRIES];  
-    char            reserved[28];                        
-    HRFS_DISK_INODE iNodeData[INODE_JOURNAL_ENTRIES];    
-    }; //_WRS_PACK_ALIGN(1) XDFS_INODE_LOG, * XDFS_INODE_LOG_PTR;
-*/
+/*************************METABITMAP_DEFINE*********************/
 
-/*************************METABITMAP_DEFINE*************************/
+#define METABITMAP_NBLKS 1 /* FSB_METABITMAPä¸FIB_METABITMAPæ¯ä¸€ä¸ªéƒ½å ç”¨1å— */
 
-#define METABITMAP_NBLKS 1 /* FSB_METABITMAPÓëFIB_METABITMAPÃ¿Ò»¸ö¶¼Õ¼ÓÃ1¿é */
+/*************************GLOBAL_INFO_DEFINE*********************/
 
+#define GLOBAL_INFO_NBLKS 1	/* GLOBAL_INFOæœ‰ä¸¤ä¸ªï¼Œæ¯ä¸€ä¸ªéƒ½å ç”¨1ä¸ªå— */
 
-/*************************GLOBAL_INFO_DEFINE*************************/
-
-#define GLOBAL_INFO_NBLKS 1	/* GLOBAL_INFOÓĞÁ½¸ö£¬Ã¿Ò»¸ö¶¼Õ¼ÓÃ1¸ö¿é */
-
-/*
-typedef struct xdfs_global_info        
-    {
-    UINT64    transNumber;      
-    UINT64    timeStamp;       
-    UINT32    numInodesToDelete;
-    UINT32    numFreeInodes;
-    UINT32    numFreeDataBlocks;
-    UINT32    spare;
-    } //_WRS_PACK_ALIGN(1) XDFS_TMR;
-*/    
-    
 /*************************SUPERBLOCK_DEFINE*************************/
 
-#define SUPERBLOCK_NBLKS 1	/* SUPERBLOCK´óĞ¡Îª96×Ö½Ú£¬Õ¼ÓÃ1¸ö¿é */
-#define XDFS_ID_STRING "xdfs"	/*¡¡ÎÄ¼şÏµÍ³µÄID¡¡*/
+#define SUPERBLOCK_NBLKS 1	/* SUPERBLOCKå¤§å°ä¸º96å­—èŠ‚ï¼Œå ç”¨1ä¸ªå— */
+#define XDFS_ID_STRING "xdfs"	/*ã€€æ–‡ä»¶ç³»ç»Ÿçš„IDã€€*/
 
-/*
-typedef struct xdfs_disk_super_block_struct
-    {
-    char      idString[8];  
-    INT64     ctime;        
-    UINT8     majorVers;    
-    UINT8     minorVers;    
-    UINT16    blkSize2;     
-    UINT32    totalBlks;   
-
-    UINT32    reservedBlks;
-                           
-
-    UINT32    iNodeCount;   
-                            
-
-    UINT32    bgSize;      
-    UINT32    dsSize;       
-    UINT32    nBlkGroups;  
-
-    UINT32    fsbOff[2];    
-    UINT32    fibOff[2];    
-
-    UINT32    itOff;       
-    UINT32    ijOff;        
-
-    UINT32    tmOff[2];    
-    UINT32    tmrOff[2];    
-
-    UINT32    dsOff;     
-    UINT32    pad;         
-    UINT32    crc;          
-    };*/
-
-/* ÄÚºËÌ¬ÏÂµÄSUPERBLOCK */
-typedef struct xdfs_incore_super_block_struct
-    {
-    char      idString[8];  /* Identification or eyecatcher string */
-    INT64     ctime;        /* time at which superblock was created. */
-    UINT8     majorVers;    /* Major version number */
-    UINT8     minorVers;    /* Minor version number */
-    UINT16    blkSize2;     /* Block size as a power of 2. */
-    UINT32    totalBlks;    /* Total # of blocks in fs (including offset). */
-
-    UINT32    reservedBlks; /* Size of the reserved space at */
-                            /* the start of the media. */
-
-    UINT32    iNodeCount;   /* The number of iNodes this file */
-                            /* system instantiation has. */
-
-    UINT32    bgSize;       /* Block group size  (=dsSize + 1 for 1st iter) */
-    UINT32    dsSize;       /* Data space size   (=bgSize - 1 for 1st iter) */
-    UINT32    nBlkGroups;   /* Number of block groups. (1 for 1st iteration) */
-
-    UINT32    fsbOff[2];    /* 1st & 2nd free space bitmap offsets */
-    UINT32    fibOff[2];    /* 1st & 2nd free inode bitmap offsets */
-
-    UINT32    itOff;        /* inode table offset */
-    UINT32    ijOff;        /* inode journal offset */
-
-    UINT32    tmOff[2];     /* 1st & 2nd transaction map offsets */
-    UINT32    tmrOff[2];    /* 1st & 2nd transaction  master record offsets */
-
-    UINT32    dsOff;        /* data space offset */
-    UINT32    pad;          /* pad out structure */
-    UINT32    crc;          /* superblock CRC */
-    } XDFS_INCORE_SUPER_BLOCK, * XDFS_INCORE_SUPER_BLOCK_PTR;
-
+struct xdfs_superblock {
+    UINT32        s_magic;
+    UINT32        s_state;	/* The superblock state : XDFS_DIRTY or XDFS_CLEAN */
+    UINT32        s_nifree;	/* The num of free inode */
+    UINT32        s_inode;	/* The number of FIB0 block */
+    UINT32        s_nbfree;	/* The num of free blk */
+    UINT32        s_block;	/* The number of FSB0 block */
+};
 
 /*************************DEFINE_END*************************/ 
 
-
+/**
+ * ä½¿ç”¨æ–¹æ³•
+ * ./<name> /dev/loop0
+*/
 int main(int argc, char *argv[])
 {
 	int error;
-	 	 
-	/* ²ÎÊıÓĞĞ§ĞÔ¼ì²é */
-/*	if(argc != 2)
+			
+	/* å‚æ•°æœ‰æ•ˆæ€§æ£€æŸ¥ */
+	/*	if(argc != 2)
 	{
 		fprintf(stderr, "xdfs: need to specify device\n");
 		return (ERROR);
 	} */
-	
-	/* ´ò¿ªÉè±¸ */
+
+	/* æ‰“å¼€è®¾å¤‡ */
 	int devfd;
-	//devfd = open("\\dev\\loop0", O_WRONLY); 
-	devfd = open("D:\\¸öÈËÊÂÎñ\\²Ù×÷ÏµÍ³ÏîÄ¿\\²Ù×÷ÏµÍ³´óÈü\\2021.4.2\\test.txt", O_WRONLY);
+	devfd = open(argv[1], O_WRONLY); 
 	if(devfd < 0)
 	{
 		fprintf(stderr, "xdfs: failed to open device\n");
 		return (ERROR);
 	}
-	
-	/* ÎÄ¼şÏµÍ³´óĞ¡¼ì²é */
+
+	/* æ–‡ä»¶ç³»ç»Ÿå¤§å°æ£€æŸ¥ */
 	error = lseek(devfd, (off_t)(nblks * blksize), SEEK_SET);
 	if(error == -1)
 	{
@@ -257,13 +154,13 @@ printf("PBR START\n");
 	p_pbr = (char *)malloc(blksize * PBR_NBLKS);
 	if (p_pbr == NULL)
     	return (ERROR);
-	memset(p_pbr, 0xff, blksize * PBR_NBLKS);	/* »º³åÇøÖÃ0xff */ 
+	memset(p_pbr, 0xff, blksize * PBR_NBLKS);	/* ç¼“å†²åŒºç½®0xff */ 
     
-	/* PBRÄÚÈİÌî³ä */
+	/* PBRå†…å®¹å¡«å…… */
 	p_pbr[PBR_JMP] = 0xe9;
 	strcpy(p_pbr + PBR_SYS_ID, "xdfs"); 
 	
-	/* ÎÄ¼şÏµÍ³PBRĞèÒÔĞ¡¶Ë×Ö½ÚĞòĞ´Èë */
+	/* æ–‡ä»¶ç³»ç»ŸPBRéœ€ä»¥å°ç«¯å­—èŠ‚åºå†™å…¥ */
 #if (LTFS_BYTE_ORDER == LITTLE_BYTE_ORDER)
     *((UINT32 *)(&p_pbr[PBR_NUM_BLKS])) = nblks;
 #else
@@ -273,11 +170,11 @@ printf("PBR START\n");
     p_pbr[PBR_NUM_BLKS+3] = (nblks >> 24) & 0xFF;
 #endif
 
-	/* PBR_BYTES_PER_BLKÊÇÒ»¸öÆæÊı£¬Òò´ËÎŞÂÛ×Ö½ÚË³ĞòÈçºÎ£¬ÎÒÃÇ¶¼±ØĞëÒ»´ÎĞ´ÈëÒ»¸ö×Ö½Ú */
+	/* PBR_BYTES_PER_BLKæ˜¯ä¸€ä¸ªå¥‡æ•°ï¼Œå› æ­¤æ— è®ºå­—èŠ‚é¡ºåºå¦‚ä½•ï¼Œæˆ‘ä»¬éƒ½å¿…é¡»ä¸€æ¬¡å†™å…¥ä¸€ä¸ªå­—èŠ‚ */
 	p_pbr[PBR_BYTES_PER_BLK]     = blksize & 0xFF;
     p_pbr[PBR_BYTES_PER_BLK + 1] = (blksize >> 8) & 0xFF;
 	
-	/* PBRĞ´ÈëÉè±¸ */
+	/* PBRå†™å…¥è®¾å¤‡ */
 	write(devfd, p_pbr, blksize * PBR_NBLKS);
 	 
 	free(p_pbr); 
@@ -299,22 +196,22 @@ printf("FSB0 START\n");
     	printf("p_fsb0 malloc failed!");
     	return (ERROR);
 	}
-	memset(p_fsb0, 0xff, blksize * FSB_NBLKS);	/*»º³åÇøÖÃ0xff£¬±íÊ¾¾ùÎ´Ê¹ÓÃ*/ 
+	memset(p_fsb0, 0xff, blksize * FSB_NBLKS);	/*ç¼“å†²åŒºç½®0xffï¼Œè¡¨ç¤ºå‡æœªä½¿ç”¨*/ 
 	
-	/* µÚ1Î»ÓÃÀ´±íÊ¾±£´æPBR */
+	/* ç¬¬1ä½ç”¨æ¥è¡¨ç¤ºä¿å­˜PBR */
 	p_fsb0[0] = p_fsb0[0] & 0b11111110 ;
-	/* µÚ2Î»ÓÃÀ´±íÊ¾±£´æFSB0 */
+	/* ç¬¬2ä½ç”¨æ¥è¡¨ç¤ºä¿å­˜FSB0 */
 	p_fsb0[0] = p_fsb0[0] & 0b11111101;
-	/* µÚ3Î»ÓÃÀ´±íÊ¾±£´æFIB0 */ 
+	/* ç¬¬3ä½ç”¨æ¥è¡¨ç¤ºä¿å­˜FIB0 */ 
 	p_fsb0[0] = p_fsb0[0] & 0b11111011;
-	/* µÚ4Î»ÓÃÀ´±íÊ¾±£´æFSB1 */ 
+	/* ç¬¬4ä½ç”¨æ¥è¡¨ç¤ºä¿å­˜FSB1 */ 
 	p_fsb0[0] = p_fsb0[0] & 0b11110111;
-	/* µÚ5Î»ÓÃÀ´±íÊ¾±£´æFIB1 */ 
+	/* ç¬¬5ä½ç”¨æ¥è¡¨ç¤ºä¿å­˜FIB1 */ 
 	p_fsb0[0] = p_fsb0[0] & 0b11101111;
 
 printf("part 1 is OK\n");
 	
-	/* ½ÓÏÂÀ´µÄ120Î»±íÊ¾±£´æINODE_SET */
+	/* æ¥ä¸‹æ¥çš„120ä½è¡¨ç¤ºä¿å­˜INODE_SET */
 	p_fsb0[0] = p_fsb0[0] & 0b00011111;
 	for(int i = 0; i < int((120 - 3) / 8); i++)
 		p_fsb0[i + 1] = p_fsb0[i + 1] & 0b00000000;
@@ -322,21 +219,21 @@ printf("part 1 is OK\n");
 
 printf("part 2 is OK\n");
 	
-	/* µÚ126Î»ÓÃÀ´±íÊ¾±£´æINODE_LOG */ 
+	/* ç¬¬126ä½ç”¨æ¥è¡¨ç¤ºä¿å­˜INODE_LOG */ 
 	p_fsb0[15] = p_fsb0[15] & 0b11110111;	
 	
-	/* µÚ127¡¢128¡¢129¡¢130Î»ÓÃÀ´±íÊ¾±£´æFSB_METABITMAPÓëFIB_METABITMAP */ 
+	/* ç¬¬127ã€128ã€129ã€130ä½ç”¨æ¥è¡¨ç¤ºä¿å­˜FSB_METABITMAPä¸FIB_METABITMAP */ 
 	p_fsb0[15] = p_fsb0[15] & 0b00001111;
 	
-	/* µÚ131Î»ÓÃÀ´±íÊ¾±£´æGLOBAL_INFO */
+	/* ç¬¬131ä½ç”¨æ¥è¡¨ç¤ºä¿å­˜GLOBAL_INFO */
 	p_fsb0[16] = p_fsb0[16] & 0b11111110;
 		
-	/* FSB0µÄ×îºó1Î»ÓÃÀ´±íÊ¾±£´æSUPERBLOCK */
+	/* FSB0çš„æœ€å1ä½ç”¨æ¥è¡¨ç¤ºä¿å­˜SUPERBLOCK */
 	p_fsb0[blksize - 1] = p_fsb0[blksize - 1] & 0b01111111;	
 
 printf("part 3 is OK\n");
 		 
-	/* FSB0Ğ´ÈëÉè±¸ */
+	/* FSB0å†™å…¥è®¾å¤‡ */
 	write(devfd, p_fsb0, blksize * FSB_NBLKS);
 	
 	free(p_fsb0); 
@@ -355,9 +252,9 @@ printf("FIB0 START\n");
 	p_fib0 = (char *)malloc(blksize * FIB_NBLKS);
 	if (p_fib0 == NULL)
     	return (ERROR);
-	memset(p_fib0, 0xff, blksize * FIB_NBLKS);	/*»º³åÇøÖÃ0xff£¬±íÊ¾¾ùÎ´Ê¹ÓÃ*/ 
+	memset(p_fib0, 0xff, blksize * FIB_NBLKS);	/*ç¼“å†²åŒºç½®0xffï¼Œè¡¨ç¤ºå‡æœªä½¿ç”¨*/ 
 	
-	/* FIB0Ğ´ÈëÉè±¸ */
+	/* FIB0å†™å…¥è®¾å¤‡ */
 	write(devfd, p_fib0, blksize * FIB_NBLKS);
 	
 	free(p_fib0);
@@ -376,22 +273,22 @@ printf("FSB1 START\n");
 	p_fsb1 = (char *)malloc(blksize * FSB_NBLKS);
 	if (p_fsb1 == NULL)
     	return (ERROR);
-	memset(p_fsb1, 0xff, blksize * FSB_NBLKS);	/*»º³åÇøÖÃ0xff£¬±íÊ¾¾ùÎ´Ê¹ÓÃ*/ 
+	memset(p_fsb1, 0xff, blksize * FSB_NBLKS);	/*ç¼“å†²åŒºç½®0xffï¼Œè¡¨ç¤ºå‡æœªä½¿ç”¨*/ 
 	
-	/* µÚ1Î»ÓÃÀ´±íÊ¾±£´æPBR */
+	/* ç¬¬1ä½ç”¨æ¥è¡¨ç¤ºä¿å­˜PBR */
 	p_fsb1[0] = p_fsb1[0] & 0b11111110 ;
-	/* µÚ2Î»ÓÃÀ´±íÊ¾±£´æFSB0 */
+	/* ç¬¬2ä½ç”¨æ¥è¡¨ç¤ºä¿å­˜FSB0 */
 	p_fsb1[0] = p_fsb1[0] & 0b11111101;
-	/* µÚ3Î»ÓÃÀ´±íÊ¾±£´æFIB0 */ 
+	/* ç¬¬3ä½ç”¨æ¥è¡¨ç¤ºä¿å­˜FIB0 */ 
 	p_fsb1[0] = p_fsb1[0] & 0b11111011;
-	/* µÚ4Î»ÓÃÀ´±íÊ¾±£´æFSB1 */ 
+	/* ç¬¬4ä½ç”¨æ¥è¡¨ç¤ºä¿å­˜FSB1 */ 
 	p_fsb1[0] = p_fsb1[0] & 0b11110111;
-	/* µÚ5Î»ÓÃÀ´±íÊ¾±£´æFIB1 */ 
+	/* ç¬¬5ä½ç”¨æ¥è¡¨ç¤ºä¿å­˜FIB1 */ 
 	p_fsb1[0] = p_fsb1[0] & 0b11101111;
 
 printf("part 1 is OK\n");
 	
-	/* ½ÓÏÂÀ´µÄ120Î»±íÊ¾±£´æINODE_SET */
+	/* æ¥ä¸‹æ¥çš„120ä½è¡¨ç¤ºä¿å­˜INODE_SET */
 	p_fsb1[0] = p_fsb1[0] & 0b00011111;
 	for(int i = 0; i < ((120 - 3) / 8); i++)
 		p_fsb1[i + 1] = p_fsb1[i + 1] & 0b00000000;
@@ -399,21 +296,21 @@ printf("part 1 is OK\n");
 
 printf("part 2 is OK\n");
 	
-	/* µÚ126Î»ÓÃÀ´±íÊ¾±£´æINODE_LOG */ 
+	/* ç¬¬126ä½ç”¨æ¥è¡¨ç¤ºä¿å­˜INODE_LOG */ 
 	p_fsb1[15] = p_fsb1[15] & 0b11110111;	
 	
-	/* µÚ127¡¢128¡¢129¡¢130Î»ÓÃÀ´±íÊ¾±£´æFSB_METABITMAPÓëFIB_METABITMAP */ 
+	/* ç¬¬127ã€128ã€129ã€130ä½ç”¨æ¥è¡¨ç¤ºä¿å­˜FSB_METABITMAPä¸FIB_METABITMAP */ 
 	p_fsb1[15] = p_fsb1[15] & 0b00001111;
 	
-	/* µÚ131Î»ÓÃÀ´±íÊ¾±£´æGLOBAL_INFO */
+	/* ç¬¬131ä½ç”¨æ¥è¡¨ç¤ºä¿å­˜GLOBAL_INFO */
 	p_fsb1[16] = p_fsb1[16] & 0b11111110;
 		
-	/* FSB1µÄ×îºó1Î»ÓÃÀ´±íÊ¾±£´æSUPERBLOCK */
+	/* FSB1çš„æœ€å1ä½ç”¨æ¥è¡¨ç¤ºä¿å­˜SUPERBLOCK */
 	p_fsb1[blksize - 1] = p_fsb1[blksize - 1] & 0b01111111;		 
 
 printf("part 3 is OK\n");
 	
-	/* FSB1Ğ´ÈëÉè±¸ */
+	/* FSB1å†™å…¥è®¾å¤‡ */
 	write(devfd, p_fsb1, blksize * FSB_NBLKS);
 	
 	free(p_fsb1);
@@ -432,9 +329,9 @@ printf("FIB1 START\n");
 	p_fib1 = (char *)malloc(blksize * FIB_NBLKS);
 	if (p_fib1 == NULL)
     	return (ERROR);
-	memset(p_fib1, 0xff, blksize * FIB_NBLKS);	/*»º³åÇøÖÃ0xff£¬±íÊ¾¾ùÎ´Ê¹ÓÃ*/ 
+	memset(p_fib1, 0xff, blksize * FIB_NBLKS);	/*ç¼“å†²åŒºç½®0xffï¼Œè¡¨ç¤ºå‡æœªä½¿ç”¨*/ 
 	
-	/* FIB1Ğ´ÈëÉè±¸ */
+	/* FIB1å†™å…¥è®¾å¤‡ */
 	write(devfd, p_fib1, blksize * FIB_NBLKS);
 	
 	free(p_fib1);
@@ -450,16 +347,16 @@ printf("INODE_SET START\n");
 	
 	lseek(devfd, blksize * PBR_NBLKS + blksize * FSB_NBLKS * 2 + blksize * FIB_NBLKS * 2, SEEK_SET);
 	char *p_inode_set;
-	p_inode_set = (char *)malloc(1 * sizeof(XDFS_INODE));
+	p_inode_set = (char *)malloc(1 * sizeof(struct xdfs_inode));
 	if (p_inode_set == NULL)
     	return (ERROR);
-	memset(p_inode_set, 0xff, 1 * sizeof(XDFS_INODE));	/*»º³åÇøÖÃ0xff£¬±íÊ¾¾ùÎ´Ê¹ÓÃ*/ 
+	memset(p_inode_set, 0xff, 1 * sizeof(struct xdfs_inode));	/*ç¼“å†²åŒºç½®0xffï¼Œè¡¨ç¤ºå‡æœªä½¿ç”¨*/ 
 
 printf("part 1 is OK\n");
 
 	for(int i = 0; i < INODE_NUMS; i++)
 	{
-		write(devfd, p_inode_set, 1 * sizeof(XDFS_INODE));
+		write(devfd, p_inode_set, 1 * sizeof(struct xdfs_inode));
 	}
 	
 printf("part 2 is OK\n");
@@ -481,7 +378,7 @@ printf("INODE_LOG START\n");
 	p_inode_log = (char *)malloc(blksize * INODE_LOG_NBLKS);
 	if (p_inode_log == NULL)
     	return (ERROR);
-	memset(p_inode_log, 0xff, blksize * INODE_LOG_NBLKS);	/*»º³åÇøÖÃ0xff*/ 
+	memset(p_inode_log, 0xff, blksize * INODE_LOG_NBLKS);	/*ç¼“å†²åŒºç½®0xff*/ 
 	write(devfd, p_inode_log, blksize * INODE_LOG_NBLKS);
 
 printf("part 1 is OK\n");
@@ -503,7 +400,7 @@ printf("FSB_METABITMAP0 START\n");
 	p_fsb_metabitmap0 = (char *)malloc(blksize * METABITMAP_NBLKS);
 	if (p_fsb_metabitmap0 == NULL)
     	return (ERROR);
-	memset(p_fsb_metabitmap0, 0x00, blksize * METABITMAP_NBLKS);	/*»º³åÇøÖÃ0x00*/ 
+	memset(p_fsb_metabitmap0, 0x00, blksize * METABITMAP_NBLKS);	/*ç¼“å†²åŒºç½®0x00*/ 
 	write(devfd, p_fsb_metabitmap0, blksize * METABITMAP_NBLKS);
 	free(p_fsb_metabitmap0);
 
@@ -522,7 +419,7 @@ printf("FSB_METABITMAP1 START\n");
 	p_fsb_metabitmap1 = (char *)malloc(blksize * METABITMAP_NBLKS);
 	if (p_fsb_metabitmap1 == NULL)
     	return (ERROR);
-	memset(p_fsb_metabitmap1, 0x00, blksize * METABITMAP_NBLKS);	/*»º³åÇøÖÃ0x00*/ 
+	memset(p_fsb_metabitmap1, 0x00, blksize * METABITMAP_NBLKS);	/*ç¼“å†²åŒºç½®0x00*/ 
 	write(devfd, p_fsb_metabitmap1, blksize * METABITMAP_NBLKS);
 	free(p_fsb_metabitmap1);
 
@@ -541,7 +438,7 @@ printf("FIB_METABITMAP0 START\n");
 	p_fib_metabitmap0 = (char *)malloc(blksize * METABITMAP_NBLKS);
 	if (p_fib_metabitmap0 == NULL)
     	return (ERROR);
-	memset(p_fib_metabitmap0, 0x00, blksize * METABITMAP_NBLKS);	/*»º³åÇøÖÃ0x00*/ 
+	memset(p_fib_metabitmap0, 0x00, blksize * METABITMAP_NBLKS);	/*ç¼“å†²åŒºç½®0x00*/ 
 	write(devfd, p_fib_metabitmap0, blksize * METABITMAP_NBLKS);
 	free(p_fib_metabitmap0);
 
@@ -560,7 +457,7 @@ printf("FIB_METABITMAP1 START\n");
 	p_fib_metabitmap1 = (char *)malloc(blksize * METABITMAP_NBLKS);
 	if (p_fib_metabitmap1 == NULL)
     	return (ERROR);
-	memset(p_fib_metabitmap1, 0x00, blksize * METABITMAP_NBLKS);	/*»º³åÇøÖÃ0x00*/ 
+	memset(p_fib_metabitmap1, 0x00, blksize * METABITMAP_NBLKS);	/*ç¼“å†²åŒºç½®0x00*/ 
 	write(devfd, p_fib_metabitmap1, blksize * METABITMAP_NBLKS);
 	free(p_fib_metabitmap1);
 
@@ -579,7 +476,7 @@ printf("GLOBAL_INFO0 START\n");
 	p_global_info0 = (char *)malloc(blksize * GLOBAL_INFO_NBLKS);
 	if (p_global_info0 == NULL)
     	return (ERROR);
-	memset(p_global_info0, 0x00, blksize * GLOBAL_INFO_NBLKS);	/*»º³åÇøÖÃ0x00*/
+	memset(p_global_info0, 0x00, blksize * GLOBAL_INFO_NBLKS);	/*ç¼“å†²åŒºç½®0x00*/
 	write(devfd, p_global_info0, blksize * GLOBAL_INFO_NBLKS);
 	free(p_global_info0);
 
@@ -598,7 +495,7 @@ printf("GLOBAL_INFO1 START\n");
 	p_global_info1 = (char *)malloc(blksize * GLOBAL_INFO_NBLKS);
 	if (p_global_info1 == NULL)
     	return (ERROR);
-	memset(p_global_info1, 0x00, blksize * GLOBAL_INFO_NBLKS);	/*»º³åÇøÖÃ0x00*/ 
+	memset(p_global_info1, 0x00, blksize * GLOBAL_INFO_NBLKS);	/*ç¼“å†²åŒºç½®0x00*/ 
 	write(devfd, p_global_info1, blksize * GLOBAL_INFO_NBLKS);
 	free(p_global_info1);
 
@@ -616,10 +513,10 @@ printf("SUPERBLOCK START\n");
 	UINT64 xdfsTime;
 	xdfsTime = time(NULL);
 	int byteShift;
-	byteShift = 12; /*4096ÊÇ2µÄ12´Î·½*/
+	byteShift = 12; /*4096æ˜¯2çš„12æ¬¡æ–¹*/
 	UINT32 freeSpaceBlks;
-	freeSpaceBlks = 32636;	/* Ò»¹²ÓĞ132¿é±»Õ¼ÓÃ£¬ÎÄ¼şÏµÍ³Ò»¹²ÓĞ32768¿é£¬Ê£ÏÂ32636¿é¿ÕÏĞ */ 
-	XDFS_INCORE_SUPER_BLOCK *p_superblock;   /* in-core copy of super block */
+	freeSpaceBlks = 32636;	/* ä¸€å…±æœ‰132å—è¢«å ç”¨ï¼Œæ–‡ä»¶ç³»ç»Ÿä¸€å…±æœ‰32768å—ï¼Œå‰©ä¸‹32636å—ç©ºé—² */ 
+	struct xdfs_superblock *p_superblock;   /* in-core copy of super block */
     //HRFS_DISK_SUPER_BLOCK   *pdisksuperBlk; /* on-disk copy of super block */
 	
 
@@ -628,18 +525,18 @@ printf("SUPERBLOCK START\n");
     {
     	return (ERROR);
 	}
-//	p_disksuperblk = (HRFS_DISK_SUPER_BLOCK *)p_data;
+	
 
 	memset(p_data, 0xff, blksize * SUPERBLOCK_NBLKS);
 	lseek(devfd, blksize * (nblks - 1), SEEK_SET);
 	write(devfd, p_data, blksize * SUPERBLOCK_NBLKS);
 	free(p_data);
 	
-	if ((p_superblock = (XDFS_INCORE_SUPER_BLOCK *)malloc(sizeof(XDFS_INCORE_SUPER_BLOCK))) == NULL)
+	if ((p_superblock = (struct xdfs_superblock *)malloc(sizeof(struct xdfs_superblock))) == NULL)
         {
         return (ERROR);
         }
-	memset(p_superblock, 0xff, sizeof(XDFS_INCORE_SUPER_BLOCK));
+	memset(p_superblock, 0xff, sizeof(struct xdfs_superblock));
 /*
     bzero((char *)psuperblock, sizeof(HRFS_INCORE_SUPER_BLOCK));
 */
@@ -648,8 +545,8 @@ printf("part 1 is OK\n");
  
     memcpy(p_superblock->idString , XDFS_ID_STRING, sizeof(p_superblock->idString));
     p_superblock->ctime = xdfsTime;
-    p_superblock->majorVers = 0;	/*È±Ê¡£¬Îª0*/
-	p_superblock->minorVers = 0;	/*È±Ê¡£¬Îª0*/
+    p_superblock->majorVers = 0;	/*ç¼ºçœï¼Œä¸º0*/
+	p_superblock->minorVers = 0;	/*ç¼ºçœï¼Œä¸º0*/
     p_superblock->blkSize2 = byteShift;
     p_superblock->totalBlks = nblks;
     p_superblock->reservedBlks = 1;
@@ -695,12 +592,12 @@ printf("part 3 is OK\n");
     	hrfsSuperblockDiskCoreConvert(pSuperBlkOut, pDiskSuperBlk);
     }*/
 	
-	/* SuperBlockĞ´ÈëÉè±¸ */
+	/* SuperBlockå†™å…¥è®¾å¤‡ */
 	lseek(devfd, blksize * (nblks - 1), SEEK_SET);
 	
 printf("part 4 is OK\n");	
 	
-	write(devfd, p_superblock , sizeof(XDFS_INCORE_SUPER_BLOCK));
+	write(devfd, p_superblock , sizeof(struct xdfs_superblock));
 	
 printf("part 5 is OK\n");	
 	
