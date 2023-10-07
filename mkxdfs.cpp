@@ -5,7 +5,9 @@
 #include <iostream>
 #include <time.h>
 #include <string.h>
-
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 typedef int8_t INT8;
 typedef int16_t INT16;
 typedef int32_t INT32;
@@ -63,6 +65,10 @@ typedef UINT32  fgen_t;
 typedef UINT32  fid_t;
 typedef UINT16  linkCount_t;
 typedef UINT16  fmode_t;
+typedef unsigned short		umode_t;
+typedef struct {
+	int counter;
+} atomic_t;
 
 struct xdfs_inode
 {
@@ -101,13 +107,14 @@ struct xdfs_inode
 #define SUPERBLOCK_NBLKS 1	/* SUPERBLOCK大小为96字节，占用1个块 */
 #define XDFS_ID_STRING "xdfs"	/*　文件系统的ID　*/
 
+
 struct xdfs_superblock {
     UINT32        s_magic;
     UINT32        s_state;	/* The superblock state : XDFS_DIRTY or XDFS_CLEAN */
     UINT32        s_nifree;	/* The num of free inode */
     UINT32        s_inode;	/* The number of FIB0 block */
     UINT32        s_nbfree;	/* The num of free blk */
-    UINT32        s_block;	/* The number of FSB0 block */
+    UINT32        s_block;	/* The num of blocks */
 };
 
 /*************************DEFINE_END*************************/ 
@@ -544,48 +551,14 @@ printf("SUPERBLOCK START\n");
 printf("part 1 is OK\n");
  
     memcpy(p_superblock->idString , XDFS_ID_STRING, sizeof(p_superblock->idString));
-    p_superblock->ctime = xdfsTime;
-    p_superblock->majorVers = 0;	/*缺省，为0*/
-	p_superblock->minorVers = 0;	/*缺省，为0*/
-    p_superblock->blkSize2 = byteShift;
-    p_superblock->totalBlks = nblks;
-    p_superblock->reservedBlks = 1;
-    p_superblock->iNodeCount = INODE_NUMS;
-    p_superblock->bgSize = freeSpaceBlks;
-    p_superblock->dsSize = freeSpaceBlks;
-    p_superblock->nBlkGroups = 1;
-
-printf("part 2 is OK\n");
-
-    subTotal = 1;
-    p_superblock->fsbOff[0] = subTotal;
-    subTotal += FSB_NBLKS;
-    p_superblock->fsbOff[1] = subTotal;
-
-    subTotal += FSB_NBLKS;
-    p_superblock->fibOff[0] = subTotal;
-    subTotal += FIB_NBLKS;
-    p_superblock->fibOff[1] = subTotal;
-
-    subTotal += FIB_NBLKS;
-    p_superblock->itOff = subTotal;
-    subTotal += INODE_SET_NBLKS;
-    p_superblock->ijOff = subTotal;
-
-    subTotal ++;
-    p_superblock->tmOff[0] = subTotal;
-    subTotal += 2;
-    p_superblock->tmOff[1] = subTotal;
-
-    subTotal += 2;
-    p_superblock->tmrOff[0] = subTotal;
-    subTotal ++;
-    p_superblock->tmrOff[1] = subTotal;
-
-    subTotal ++;
-    p_superblock->dsOff = subTotal;
+    p_superblock->s_state = XDFS_CLEAN;
+	p_superblock->s_block = 32768-4096-8;
+    p_superblock->s_inode = 4096;
+    p_superblock->s_magic = 12;
+    p_superblock->s_nbfree = 32768-4096-8;
+    p_superblock->s_nifree = 4096;
     
-printf("part 3 is OK\n");
+printf("part 2 is OK\n");
     
   /*  if (pSuperBlkOut != NULL)
     {
@@ -595,11 +568,11 @@ printf("part 3 is OK\n");
 	/* SuperBlock写入设备 */
 	lseek(devfd, blksize * (nblks - 1), SEEK_SET);
 	
-printf("part 4 is OK\n");	
+printf("part 3 is OK\n");	
 	
 	write(devfd, p_superblock , sizeof(struct xdfs_superblock));
 	
-printf("part 5 is OK\n");	
+printf("part 4 is OK\n");	
 	
 	free(p_superblock);
 	

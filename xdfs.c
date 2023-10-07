@@ -118,8 +118,79 @@ struct xdfs_superblock {
     UINT32        s_nifree;	/* The num of free inode */
     UINT32        s_inode;	/* The number of FIB0 block */
     UINT32        s_nbfree;	/* The num of free blk */
-    UINT32        s_block;	/* The number of FSB0 block */
+    UINT32        s_block;	/* The num of blocks */
 };
+
+static int xdfs_fill_super(struct super_block *sb, void *data, int silent)
+{
+	printk("XDFS: xdfs_fill_super start(%x, %x, %d)\n ", sb, data, silent);
+	
+	struct buffer_head *bh;
+	struct xdfs_superblock *xdfs_sb;
+	struct xdfs_info * xdfs;
+	struct inode *inode_rt;
+	dev_t  dev; 
+	struct block_device * bdev;
+	/* struct dax_device *dax_dev = blkdev_get_by_dev(sb->s_bdev); */
+
+	/* bdev problem doesn't be solved */
+	bdev = sb->s_bdev;
+	if(IS_ERR(bdev))
+		return -ENOMEM;
+	else
+		printk(" XDFS: RIGHT in xdfs_fill_super(s->s_bdev = %x, block_size = %x)\n", bdev, bdev->bd_block_size);
+	
+	/* set superblock parameter and read xdfs_superblock from the device */
+	sb_set_blocksize(sb, XDFS_BSIZE);	
+	sb->s_blocksize = XDFS_BSIZE;
+	sb->s_blocksize_bits = XDFS_BSIZE_BITS;
+	printk("XDFS: sb_bread starting\n");
+	msleep(5000);
+	bh = sb_bread(sb, SB_OFFSET);
+	printk("XDFS: sb_bread ending\n");
+	msleep(5000);
+
+	/* exam the data read from the device and written by mkfs.c */
+	xdfs_sb = (struct xdfs_superblock *)bh->b_data;
+
+	/* fill superblock and xdfs_superblock */
+	xdfs = (struct xdfs_info *)kvmalloc(sizeof(struct xdfs_info), GFP_KERNEL);
+	xdfs->xdfs_ifsb = xdfs_sb;
+	xdfs->xdfs_ifbh = bh;
+	
+    sb->s_fs_info = xdfs;
+    sb->s_magic = XDFS_MAGIC;
+
+	printk("XDFS: op starting\n");
+	msleep(5000);
+	sb->s_op = &xdfs_sops;
+	printk("XDFS: op ending\n");
+	msleep(5000);
+	sb->s_dev = dev;
+	
+	/* get a new vnode */
+	printk("XDFS: iget fronting\n");
+	msleep(5000);	
+    inode_rt = xdfs_iget(sb, XDFS_ROOT_INO);	/* need new function written by GuoHeng, need a error examine */
+	printk("XDFS: iget fronting\n");
+	
+	/* make root directory */
+	printk("XDFS: d_make_root starting\n");
+	msleep(5000);
+	sb->s_root = d_make_root(inode_rt);
+    if (!sb->s_root)
+	{
+            iput(inode_rt);	/* The inode is malloced before, now it should be free */
+            printk("XDFS: xdfs_fill_super out return -ENOMEM\n");
+        	return -ENOMEM;
+	}
+	
+	printk("XDFS: syncfsfronting\n");
+	xdfs_sync_fs(sb, 1);	/* 1: sync, 0: async */
+	
+	printk("XDFS: xdfs_fill_super exit successfully\n ");
+	return 0;
+}
 
 static struct file_system_type xdfs_fs_type = {
   .owner = THIS_MODULE, 
