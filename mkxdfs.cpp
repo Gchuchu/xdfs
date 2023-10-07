@@ -10,6 +10,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <unistd.h>
 typedef int8_t INT8;
 typedef int16_t INT16;
 typedef int32_t INT32;
@@ -549,7 +550,6 @@ printf("SUPERBLOCK START\n");
 /*
     bzero((char *)psuperblock, sizeof(HRFS_INCORE_SUPER_BLOCK));
 */
-
 printf("part 1 is OK\n");
  
     // memcpy(p_superblock->idString , XDFS_ID_STRING, sizeof(p_superblock->idString));
