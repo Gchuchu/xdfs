@@ -1,10 +1,12 @@
-
 #include <stdio.h>
 #include <stdint.h>  
 #include <fcntl.h>
 #include <iostream>
 #include <time.h>
 #include <string.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -86,7 +88,7 @@ struct xdfs_inode
     unsigned long state;				/* State flag  */
     atomic_t inode_count;					/* Inode reference count  */
 
-    UINT32 addr[XDFS_DIRECT_BLOCKS]	/* Store the address */
+    UINT32 addr[XDFS_DIRECT_BLOCKS];	/* Store the address */
 };
 
 
@@ -550,8 +552,8 @@ printf("SUPERBLOCK START\n");
 
 printf("part 1 is OK\n");
  
-    memcpy(p_superblock->idString , XDFS_ID_STRING, sizeof(p_superblock->idString));
-    p_superblock->s_state = XDFS_CLEAN;
+    // memcpy(p_superblock->idString , XDFS_ID_STRING, sizeof(p_superblock->idString));
+    p_superblock->s_state = 0;
 	p_superblock->s_block = 32768-4096-8;
     p_superblock->s_inode = 4096;
     p_superblock->s_magic = 12;
