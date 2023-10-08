@@ -31,8 +31,8 @@ typedef uint64_t UINT64;
 
 #define XDFS_BYTE_ORDER LITTLE_BYTE_ORDER	/* 默认小端字节序 */ 
 
-const int blksize = 4096;	/* 一个块4KB */ 
-const int nblks = 32768;	/* 一共32768个块，128MB */ 
+const int BLKSIZE = 4096;	/* 一个块4KB */ 
+const int NUM_BLK = 32768;	/* 一共32768个块，128MB */ 
 
 
 /*************************PBR_DEFINE*************************/
@@ -147,7 +147,7 @@ int main(int argc, char *argv[])
 	}
 
 	/* 文件系统大小检查 */
-	error = lseek(devfd, (off_t)(nblks * blksize), SEEK_SET);
+	error = lseek(devfd, (off_t)(NUM_BLK * BLKSIZE), SEEK_SET);
 	if(error == -1)
 	{
 		fprintf(stderr, "xdfs: cannot create filesystem of specified size\n");
@@ -161,10 +161,10 @@ printf("PBR START\n");
 
 	lseek(devfd, 0, SEEK_SET);
 	char *p_pbr;
-	p_pbr = (char *)malloc(blksize * PBR_NBLKS);
+	p_pbr = (char *)malloc(BLKSIZE * PBR_NBLKS);
 	if (p_pbr == NULL)
     	return (ERROR);
-	memset(p_pbr, 0xff, blksize * PBR_NBLKS);	/* 缓冲区置0xff */ 
+	memset(p_pbr, 0xff, BLKSIZE * PBR_NBLKS);	/* 缓冲区置0xff */ 
     
 	/* PBR内容填充 */
 	p_pbr[PBR_JMP] = 0xe9;
@@ -172,20 +172,20 @@ printf("PBR START\n");
 	
 	/* 文件系统PBR需以小端字节序写入 */
 #if (LTFS_BYTE_ORDER == LITTLE_BYTE_ORDER)
-    *((UINT32 *)(&p_pbr[PBR_NUM_BLKS])) = nblks;
+    *((UINT32 *)(&p_pbr[PBR_NUM_BLKS])) = NUM_BLK;
 #else
-    p_pbr[PBR_NUM_BLKS]   = (nblks) & 0xFF;
-    p_pbr[PBR_NUM_BLKS+1] = (nblks >> 8) & 0xFF;
-    p_pbr[PBR_NUM_BLKS+2] = (nblks >> 16) & 0xFF;
-    p_pbr[PBR_NUM_BLKS+3] = (nblks >> 24) & 0xFF;
+    p_pbr[PBR_NUM_BLKS]   = (NUM_BLK) & 0xFF;
+    p_pbr[PBR_NUM_BLKS+1] = (NUM_BLK >> 8) & 0xFF;
+    p_pbr[PBR_NUM_BLKS+2] = (NUM_BLK >> 16) & 0xFF;
+    p_pbr[PBR_NUM_BLKS+3] = (NUM_BLK >> 24) & 0xFF;
 #endif
 
 	/* PBR_BYTES_PER_BLK是一个奇数，因此无论字节顺序如何，我们都必须一次写入一个字节 */
-	p_pbr[PBR_BYTES_PER_BLK]     = blksize & 0xFF;
-    p_pbr[PBR_BYTES_PER_BLK + 1] = (blksize >> 8) & 0xFF;
+	p_pbr[PBR_BYTES_PER_BLK]     = BLKSIZE & 0xFF;
+    p_pbr[PBR_BYTES_PER_BLK + 1] = (BLKSIZE >> 8) & 0xFF;
 	
 	/* PBR写入设备 */
-	write(devfd, p_pbr, blksize * PBR_NBLKS);
+	write(devfd, p_pbr, BLKSIZE * PBR_NBLKS);
 	 
 	free(p_pbr); 
 	
@@ -198,15 +198,15 @@ printf("PBR END\n");
 	
 printf("FSB0 START\n");
 	
-	lseek(devfd, blksize * PBR_NBLKS, SEEK_SET);
+	lseek(devfd, BLKSIZE * PBR_NBLKS, SEEK_SET);
 	char *p_fsb0;
-	p_fsb0 = (char *)malloc(blksize * FSB_NBLKS);
+	p_fsb0 = (char *)malloc(BLKSIZE * FSB_NBLKS);
 	if (p_fsb0 == NULL)
     {
     	printf("p_fsb0 malloc failed!");
     	return (ERROR);
 	}
-	memset(p_fsb0, 0xff, blksize * FSB_NBLKS);	/*缓冲区置0xff，表示均未使用*/ 
+	memset(p_fsb0, 0xff, BLKSIZE * FSB_NBLKS);	/*缓冲区置0xff，表示均未使用*/ 
 	
 	/* 第1位用来表示保存PBR */
 	p_fsb0[0] = p_fsb0[0] & 0b11111110 ;
@@ -239,12 +239,12 @@ printf("part 2 is OK\n");
 	p_fsb0[16] = p_fsb0[16] & 0b11111110;
 		
 	/* FSB0的最后1位用来表示保存SUPERBLOCK */
-	p_fsb0[blksize - 1] = p_fsb0[blksize - 1] & 0b01111111;	
+	p_fsb0[BLKSIZE - 1] = p_fsb0[BLKSIZE - 1] & 0b01111111;	
 
 printf("part 3 is OK\n");
 		 
 	/* FSB0写入设备 */
-	write(devfd, p_fsb0, blksize * FSB_NBLKS);
+	write(devfd, p_fsb0, BLKSIZE * FSB_NBLKS);
 	
 	free(p_fsb0); 
 
@@ -257,15 +257,15 @@ printf("FSB0 END\n");
 
 printf("FIB0 START\n");	
 
-	lseek(devfd, blksize * PBR_NBLKS + blksize * FSB_NBLKS, SEEK_SET);
+	lseek(devfd, BLKSIZE * PBR_NBLKS + BLKSIZE * FSB_NBLKS, SEEK_SET);
 	char *p_fib0;
-	p_fib0 = (char *)malloc(blksize * FIB_NBLKS);
+	p_fib0 = (char *)malloc(BLKSIZE * FIB_NBLKS);
 	if (p_fib0 == NULL)
     	return (ERROR);
-	memset(p_fib0, 0xff, blksize * FIB_NBLKS);	/*缓冲区置0xff，表示均未使用*/ 
+	memset(p_fib0, 0xff, BLKSIZE * FIB_NBLKS);	/*缓冲区置0xff，表示均未使用*/ 
 	
 	/* FIB0写入设备 */
-	write(devfd, p_fib0, blksize * FIB_NBLKS);
+	write(devfd, p_fib0, BLKSIZE * FIB_NBLKS);
 	
 	free(p_fib0);
 
@@ -278,12 +278,12 @@ printf("FIB0 END\n");
 
 printf("FSB1 START\n");
 	
-	lseek(devfd, blksize * PBR_NBLKS + blksize * FSB_NBLKS + blksize * FIB_NBLKS, SEEK_SET);
+	lseek(devfd, BLKSIZE * PBR_NBLKS + BLKSIZE * FSB_NBLKS + BLKSIZE * FIB_NBLKS, SEEK_SET);
 	char *p_fsb1;
-	p_fsb1 = (char *)malloc(blksize * FSB_NBLKS);
+	p_fsb1 = (char *)malloc(BLKSIZE * FSB_NBLKS);
 	if (p_fsb1 == NULL)
     	return (ERROR);
-	memset(p_fsb1, 0xff, blksize * FSB_NBLKS);	/*缓冲区置0xff，表示均未使用*/ 
+	memset(p_fsb1, 0xff, BLKSIZE * FSB_NBLKS);	/*缓冲区置0xff，表示均未使用*/ 
 	
 	/* 第1位用来表示保存PBR */
 	p_fsb1[0] = p_fsb1[0] & 0b11111110 ;
@@ -316,12 +316,12 @@ printf("part 2 is OK\n");
 	p_fsb1[16] = p_fsb1[16] & 0b11111110;
 		
 	/* FSB1的最后1位用来表示保存SUPERBLOCK */
-	p_fsb1[blksize - 1] = p_fsb1[blksize - 1] & 0b01111111;		 
+	p_fsb1[BLKSIZE - 1] = p_fsb1[BLKSIZE - 1] & 0b01111111;		 
 
 printf("part 3 is OK\n");
 	
 	/* FSB1写入设备 */
-	write(devfd, p_fsb1, blksize * FSB_NBLKS);
+	write(devfd, p_fsb1, BLKSIZE * FSB_NBLKS);
 	
 	free(p_fsb1);
 
@@ -334,15 +334,15 @@ printf("FSB1 END\n");
 
 printf("FIB1 START\n");
 	
-	lseek(devfd, blksize * PBR_NBLKS + blksize * FSB_NBLKS * 2 + blksize * FIB_NBLKS, SEEK_SET);
+	lseek(devfd, BLKSIZE * PBR_NBLKS + BLKSIZE * FSB_NBLKS * 2 + BLKSIZE * FIB_NBLKS, SEEK_SET);
 	char *p_fib1;
-	p_fib1 = (char *)malloc(blksize * FIB_NBLKS);
+	p_fib1 = (char *)malloc(BLKSIZE * FIB_NBLKS);
 	if (p_fib1 == NULL)
     	return (ERROR);
-	memset(p_fib1, 0xff, blksize * FIB_NBLKS);	/*缓冲区置0xff，表示均未使用*/ 
+	memset(p_fib1, 0xff, BLKSIZE * FIB_NBLKS);	/*缓冲区置0xff，表示均未使用*/ 
 	
 	/* FIB1写入设备 */
-	write(devfd, p_fib1, blksize * FIB_NBLKS);
+	write(devfd, p_fib1, BLKSIZE * FIB_NBLKS);
 	
 	free(p_fib1);
 
@@ -355,7 +355,7 @@ printf("FIB1 END\n");
 	
 printf("INODE_SET START\n");
 	
-	lseek(devfd, blksize * PBR_NBLKS + blksize * FSB_NBLKS * 2 + blksize * FIB_NBLKS * 2, SEEK_SET);
+	lseek(devfd, BLKSIZE * PBR_NBLKS + BLKSIZE * FSB_NBLKS * 2 + BLKSIZE * FIB_NBLKS * 2, SEEK_SET);
 	char *p_inode_set;
 	p_inode_set = (char *)malloc(1 * sizeof(struct xdfs_inode));
 	if (p_inode_set == NULL)
@@ -382,14 +382,14 @@ printf("INODE_SET END\n");
 
 printf("INODE_LOG START\n");
 
-	lseek(devfd, blksize * PBR_NBLKS + blksize * FSB_NBLKS * 2 + blksize * FIB_NBLKS * 2 \
-+ blksize * INODE_SET_NBLKS, SEEK_SET);
+	lseek(devfd, BLKSIZE * PBR_NBLKS + BLKSIZE * FSB_NBLKS * 2 + BLKSIZE * FIB_NBLKS * 2 \
++ BLKSIZE * INODE_SET_NBLKS, SEEK_SET);
 	char *p_inode_log;
-	p_inode_log = (char *)malloc(blksize * INODE_LOG_NBLKS);
+	p_inode_log = (char *)malloc(BLKSIZE * INODE_LOG_NBLKS);
 	if (p_inode_log == NULL)
     	return (ERROR);
-	memset(p_inode_log, 0xff, blksize * INODE_LOG_NBLKS);	/*缓冲区置0xff*/ 
-	write(devfd, p_inode_log, blksize * INODE_LOG_NBLKS);
+	memset(p_inode_log, 0xff, BLKSIZE * INODE_LOG_NBLKS);	/*缓冲区置0xff*/ 
+	write(devfd, p_inode_log, BLKSIZE * INODE_LOG_NBLKS);
 
 printf("part 1 is OK\n");
 
@@ -404,14 +404,14 @@ printf("INODE_LOG END\n");
 
 printf("FSB_METABITMAP0 START\n");
 
-	lseek(devfd, blksize * PBR_NBLKS + blksize * FSB_NBLKS * 2 + blksize * FIB_NBLKS * 2 \
-+ blksize * INODE_SET_NBLKS + blksize * INODE_LOG_NBLKS, SEEK_SET);
+	lseek(devfd, BLKSIZE * PBR_NBLKS + BLKSIZE * FSB_NBLKS * 2 + BLKSIZE * FIB_NBLKS * 2 \
++ BLKSIZE * INODE_SET_NBLKS + BLKSIZE * INODE_LOG_NBLKS, SEEK_SET);
 	char *p_fsb_metabitmap0;
-	p_fsb_metabitmap0 = (char *)malloc(blksize * METABITMAP_NBLKS);
+	p_fsb_metabitmap0 = (char *)malloc(BLKSIZE * METABITMAP_NBLKS);
 	if (p_fsb_metabitmap0 == NULL)
     	return (ERROR);
-	memset(p_fsb_metabitmap0, 0x00, blksize * METABITMAP_NBLKS);	/*缓冲区置0x00*/ 
-	write(devfd, p_fsb_metabitmap0, blksize * METABITMAP_NBLKS);
+	memset(p_fsb_metabitmap0, 0x00, BLKSIZE * METABITMAP_NBLKS);	/*缓冲区置0x00*/ 
+	write(devfd, p_fsb_metabitmap0, BLKSIZE * METABITMAP_NBLKS);
 	free(p_fsb_metabitmap0);
 
 printf("FSB_METABITMAP0 END\n");
@@ -423,14 +423,14 @@ printf("FSB_METABITMAP0 END\n");
 
 printf("FSB_METABITMAP1 START\n");
 
-	lseek(devfd, blksize * PBR_NBLKS + blksize * FSB_NBLKS * 2 + blksize * FIB_NBLKS * 2 \
-+ blksize * INODE_SET_NBLKS + blksize * INODE_LOG_NBLKS + blksize * METABITMAP_NBLKS, SEEK_SET);
+	lseek(devfd, BLKSIZE * PBR_NBLKS + BLKSIZE * FSB_NBLKS * 2 + BLKSIZE * FIB_NBLKS * 2 \
++ BLKSIZE * INODE_SET_NBLKS + BLKSIZE * INODE_LOG_NBLKS + BLKSIZE * METABITMAP_NBLKS, SEEK_SET);
 	char *p_fsb_metabitmap1;
-	p_fsb_metabitmap1 = (char *)malloc(blksize * METABITMAP_NBLKS);
+	p_fsb_metabitmap1 = (char *)malloc(BLKSIZE * METABITMAP_NBLKS);
 	if (p_fsb_metabitmap1 == NULL)
     	return (ERROR);
-	memset(p_fsb_metabitmap1, 0x00, blksize * METABITMAP_NBLKS);	/*缓冲区置0x00*/ 
-	write(devfd, p_fsb_metabitmap1, blksize * METABITMAP_NBLKS);
+	memset(p_fsb_metabitmap1, 0x00, BLKSIZE * METABITMAP_NBLKS);	/*缓冲区置0x00*/ 
+	write(devfd, p_fsb_metabitmap1, BLKSIZE * METABITMAP_NBLKS);
 	free(p_fsb_metabitmap1);
 
 printf("FSB_METABITMAP1 END\n");
@@ -442,14 +442,14 @@ printf("FSB_METABITMAP1 END\n");
 
 printf("FIB_METABITMAP0 START\n");
 
-	lseek(devfd, blksize * PBR_NBLKS + blksize * FSB_NBLKS * 2 + blksize * FIB_NBLKS * 2 \
-+ blksize * INODE_SET_NBLKS + blksize * INODE_LOG_NBLKS + blksize * METABITMAP_NBLKS * 2, SEEK_SET);
+	lseek(devfd, BLKSIZE * PBR_NBLKS + BLKSIZE * FSB_NBLKS * 2 + BLKSIZE * FIB_NBLKS * 2 \
++ BLKSIZE * INODE_SET_NBLKS + BLKSIZE * INODE_LOG_NBLKS + BLKSIZE * METABITMAP_NBLKS * 2, SEEK_SET);
 	char *p_fib_metabitmap0;
-	p_fib_metabitmap0 = (char *)malloc(blksize * METABITMAP_NBLKS);
+	p_fib_metabitmap0 = (char *)malloc(BLKSIZE * METABITMAP_NBLKS);
 	if (p_fib_metabitmap0 == NULL)
     	return (ERROR);
-	memset(p_fib_metabitmap0, 0x00, blksize * METABITMAP_NBLKS);	/*缓冲区置0x00*/ 
-	write(devfd, p_fib_metabitmap0, blksize * METABITMAP_NBLKS);
+	memset(p_fib_metabitmap0, 0x00, BLKSIZE * METABITMAP_NBLKS);	/*缓冲区置0x00*/ 
+	write(devfd, p_fib_metabitmap0, BLKSIZE * METABITMAP_NBLKS);
 	free(p_fib_metabitmap0);
 
 printf("FIB_METABITMAP0 END\n");
@@ -461,14 +461,14 @@ printf("FIB_METABITMAP0 END\n");
 
 printf("FIB_METABITMAP1 START\n");
 
-	lseek(devfd, blksize * PBR_NBLKS + blksize * FSB_NBLKS * 2 + blksize * FIB_NBLKS * 2 \
-+ blksize * INODE_SET_NBLKS + blksize * INODE_LOG_NBLKS + blksize * METABITMAP_NBLKS * 3, SEEK_SET);
+	lseek(devfd, BLKSIZE * PBR_NBLKS + BLKSIZE * FSB_NBLKS * 2 + BLKSIZE * FIB_NBLKS * 2 \
++ BLKSIZE * INODE_SET_NBLKS + BLKSIZE * INODE_LOG_NBLKS + BLKSIZE * METABITMAP_NBLKS * 3, SEEK_SET);
 	char *p_fib_metabitmap1;
-	p_fib_metabitmap1 = (char *)malloc(blksize * METABITMAP_NBLKS);
+	p_fib_metabitmap1 = (char *)malloc(BLKSIZE * METABITMAP_NBLKS);
 	if (p_fib_metabitmap1 == NULL)
     	return (ERROR);
-	memset(p_fib_metabitmap1, 0x00, blksize * METABITMAP_NBLKS);	/*缓冲区置0x00*/ 
-	write(devfd, p_fib_metabitmap1, blksize * METABITMAP_NBLKS);
+	memset(p_fib_metabitmap1, 0x00, BLKSIZE * METABITMAP_NBLKS);	/*缓冲区置0x00*/ 
+	write(devfd, p_fib_metabitmap1, BLKSIZE * METABITMAP_NBLKS);
 	free(p_fib_metabitmap1);
 
 printf("FIB_METABITMAP0 END\n");
@@ -480,14 +480,14 @@ printf("FIB_METABITMAP0 END\n");
 
 printf("GLOBAL_INFO0 START\n");
 
-	lseek(devfd, blksize * PBR_NBLKS + blksize * FSB_NBLKS * 2 + blksize * FIB_NBLKS * 2 \
-+ blksize * INODE_SET_NBLKS + blksize * INODE_LOG_NBLKS + blksize * METABITMAP_NBLKS * 4, SEEK_SET);
+	lseek(devfd, BLKSIZE * PBR_NBLKS + BLKSIZE * FSB_NBLKS * 2 + BLKSIZE * FIB_NBLKS * 2 \
++ BLKSIZE * INODE_SET_NBLKS + BLKSIZE * INODE_LOG_NBLKS + BLKSIZE * METABITMAP_NBLKS * 4, SEEK_SET);
 	char *p_global_info0;
-	p_global_info0 = (char *)malloc(blksize * GLOBAL_INFO_NBLKS);
+	p_global_info0 = (char *)malloc(BLKSIZE * GLOBAL_INFO_NBLKS);
 	if (p_global_info0 == NULL)
     	return (ERROR);
-	memset(p_global_info0, 0x00, blksize * GLOBAL_INFO_NBLKS);	/*缓冲区置0x00*/
-	write(devfd, p_global_info0, blksize * GLOBAL_INFO_NBLKS);
+	memset(p_global_info0, 0x00, BLKSIZE * GLOBAL_INFO_NBLKS);	/*缓冲区置0x00*/
+	write(devfd, p_global_info0, BLKSIZE * GLOBAL_INFO_NBLKS);
 	free(p_global_info0);
 
 printf("GLOBAL_INFO0 END\n");
@@ -499,14 +499,14 @@ printf("GLOBAL_INFO0 END\n");
 
 printf("GLOBAL_INFO1 START\n");
 
-	lseek(devfd, blksize * PBR_NBLKS + blksize * FSB_NBLKS * 2 + blksize * FIB_NBLKS * 2 \
-+ blksize * INODE_SET_NBLKS + blksize * INODE_LOG_NBLKS + blksize * METABITMAP_NBLKS * 4 + blksize * GLOBAL_INFO_NBLKS, SEEK_SET);
+	lseek(devfd, BLKSIZE * PBR_NBLKS + BLKSIZE * FSB_NBLKS * 2 + BLKSIZE * FIB_NBLKS * 2 \
++ BLKSIZE * INODE_SET_NBLKS + BLKSIZE * INODE_LOG_NBLKS + BLKSIZE * METABITMAP_NBLKS * 4 + BLKSIZE * GLOBAL_INFO_NBLKS, SEEK_SET);
 	char *p_global_info1;
-	p_global_info1 = (char *)malloc(blksize * GLOBAL_INFO_NBLKS);
+	p_global_info1 = (char *)malloc(BLKSIZE * GLOBAL_INFO_NBLKS);
 	if (p_global_info1 == NULL)
     	return (ERROR);
-	memset(p_global_info1, 0x00, blksize * GLOBAL_INFO_NBLKS);	/*缓冲区置0x00*/ 
-	write(devfd, p_global_info1, blksize * GLOBAL_INFO_NBLKS);
+	memset(p_global_info1, 0x00, BLKSIZE * GLOBAL_INFO_NBLKS);	/*缓冲区置0x00*/ 
+	write(devfd, p_global_info1, BLKSIZE * GLOBAL_INFO_NBLKS);
 	free(p_global_info1);
 
 printf("GLOBAL_INFO1 END\n");
@@ -530,16 +530,16 @@ printf("SUPERBLOCK START\n");
     //HRFS_DISK_SUPER_BLOCK   *pdisksuperBlk; /* on-disk copy of super block */
 	
 
-	p_data = (char *)malloc(blksize * SUPERBLOCK_NBLKS);
+	p_data = (char *)malloc(BLKSIZE * SUPERBLOCK_NBLKS);
 	if (p_data == NULL)
     {
     	return (ERROR);
 	}
 	
 
-	memset(p_data, 0xff, blksize * SUPERBLOCK_NBLKS);
-	lseek(devfd, blksize * (nblks - 1), SEEK_SET);
-	write(devfd, p_data, blksize * SUPERBLOCK_NBLKS);
+	memset(p_data, 0xff, BLKSIZE * SUPERBLOCK_NBLKS);
+	lseek(devfd, BLKSIZE * (NUM_BLK - 1), SEEK_SET);
+	write(devfd, p_data, BLKSIZE * SUPERBLOCK_NBLKS);
 	free(p_data);
 	
 	if ((p_superblock = (struct xdfs_superblock *)malloc(sizeof(struct xdfs_superblock))) == NULL)
@@ -568,7 +568,7 @@ printf("part 2 is OK\n");
     }*/
 	
 	/* SuperBlock写入设备 */
-	lseek(devfd, blksize * (nblks - 1), SEEK_SET);
+	lseek(devfd, BLKSIZE * (NUM_BLK - 1), SEEK_SET);
 	
 printf("part 3 is OK\n");	
 	

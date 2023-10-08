@@ -8,6 +8,7 @@
 #include <linux/statfs.h>
 #include <asm/uaccess.h> 		/* copy_to_user */
 #include <linux/buffer_head.h>
+#include <linux/time.h>			/* struct timespec */
 #include <linux/sched.h>
 #include <linux/device.h>
 #include <linux/fcntl.h>
@@ -69,8 +70,8 @@ typedef uint64_t UINT64;
 #define XDFS_MAXFILES 4096		/* The filesystem has 4096 inodes */
 
 /* The next two item should be replaced by XDFS_BSIZE and XDFS_MAXBLOCKS */
-const int blksize = 4096;	/* Bits of one block */
-const int nblks = 32768;	/* All occupy 32768 blocks，128MB */
+const int BLKSIZE = 4096;	/* Bits of one block */
+const int NUM_BLK = 32768;	/* All occupy 32768 blocks，128MB */
 
 #define PBR_JMP 0x00           	/* x86 jump instruction (3 bytes) */
 #define PBR_SYS_ID 0x03        	/* System ID string     (8 bytes) */
@@ -93,7 +94,7 @@ const int nblks = 32768;	/* All occupy 32768 blocks，128MB */
 #define SUPERBLOCK_NBLKS 1    	/* The SUPERBLOCK occupies 1 blk */
 #define XDFS_ID_STRING "xdfs" 	/* The name of xdfs*/
 
-struct xdfs_inode
+static struct xdfs_inode
 {
     umode_t mode;						/* IS directory?  */
     uid_t uid; 						/* User id */
@@ -109,25 +110,33 @@ struct xdfs_inode
     unsigned long state;				/* State flag  */
     atomic_t inode_count;					/* Inode reference count  */
 
-    UINT32 addr[XDFS_DIRECT_BLOCKS]	/* Store the address */
+    UINT32 addr[XDFS_DIRECT_BLOCKS];	/* Store the address */
 };
 
-struct xdfs_superblock {
+static struct xdfs_superblock {
     UINT32        s_magic;
     UINT32        s_state;	/* The superblock state : XDFS_DIRTY or XDFS_CLEAN */
     UINT32        s_nifree;	/* The num of free inode */
     UINT32        s_inode;	/* The number of FIB0 block */
     UINT32        s_nbfree;	/* The num of free blk */
     UINT32        s_block;	/* The num of blocks */
+	struct buffer_head* bh;
 };
 
-static int xdfs_fill_super(struct super_block *sb, void *data, int silent)
+static struct address_space_operations	xdfs_aops;
+static struct file_operations 			xdfs_dir_operations;
+static struct inode_operations 		xdfs_dir_inops;
+static static struct file_operations 			xdfs_file_operations;
+static struct inode_operations 		xdfs_file_inops;
+static struct file_system_type xdfs_fs_type;
+
+static int 
+xdfs_fill_super(struct super_block *sb, void *data, int silent)
 {
-	printk("XDFS: xdfs_fill_super start(%x, %x, %d)\n ", sb, data, silent);
+	printk("XDFS: xdfs_fill_super start(%p, %p, %d)\n ", sb, data, silent);
 	
 	struct buffer_head *bh;
 	struct xdfs_superblock *xdfs_sb;
-	struct xdfs_info * xdfs;
 	struct inode *inode_rt;
 	dev_t  dev; 
 	struct block_device * bdev;
@@ -138,41 +147,31 @@ static int xdfs_fill_super(struct super_block *sb, void *data, int silent)
 	if(IS_ERR(bdev))
 		return -ENOMEM;
 	else
-		printk(" XDFS: RIGHT in xdfs_fill_super(s->s_bdev = %x, block_size = %x)\n", bdev, bdev->bd_block_size);
+		printk(" XDFS: RIGHT in xdfs_fill_super(s->s_bdev = %p, block_size = %x)\n", bdev, bdev->bd_block_size);
 	
 	/* set superblock parameter and read xdfs_superblock from the device */
-	sb_set_blocksize(sb, XDFS_BSIZE);	
-	sb->s_blocksize = XDFS_BSIZE;
-	sb->s_blocksize_bits = XDFS_BSIZE_BITS;
 	printk("XDFS: sb_bread starting\n");
-	msleep(5000);
-	bh = sb_bread(sb, SB_OFFSET);
-	printk("XDFS: sb_bread ending\n");
+	bh = sb_bread(sb, BLKSIZE*(32768-1));
+	sb->s_blocksize = BLKSIZE;
+	sb->s_blocksize_bits = NUM_BLK;
 	msleep(5000);
 
 	/* exam the data read from the device and written by mkfs.c */
 	xdfs_sb = (struct xdfs_superblock *)bh->b_data;
-
-	/* fill superblock and xdfs_superblock */
-	xdfs = (struct xdfs_info *)kvmalloc(sizeof(struct xdfs_info), GFP_KERNEL);
-	xdfs->xdfs_ifsb = xdfs_sb;
-	xdfs->xdfs_ifbh = bh;
+	xdfs_sb->bh = bh;
 	
-    sb->s_fs_info = xdfs;
+    sb->s_fs_info = xdfs_sb;
     sb->s_magic = XDFS_MAGIC;
 
 	printk("XDFS: op starting\n");
 	msleep(5000);
 	sb->s_op = &xdfs_sops;
-	printk("XDFS: op ending\n");
-	msleep(5000);
 	sb->s_dev = dev;
 	
 	/* get a new vnode */
 	printk("XDFS: iget fronting\n");
 	msleep(5000);	
     inode_rt = xdfs_iget(sb, XDFS_ROOT_INO);	/* need new function written by GuoHeng, need a error examine */
-	printk("XDFS: iget fronting\n");
 	
 	/* make root directory */
 	printk("XDFS: d_make_root starting\n");
@@ -185,13 +184,88 @@ static int xdfs_fill_super(struct super_block *sb, void *data, int silent)
         	return -ENOMEM;
 	}
 	
-	printk("XDFS: syncfsfronting\n");
+	printk("XDFS: sync_fs begin\n");
 	xdfs_sync_fs(sb, 1);	/* 1: sync, 0: async */
-	
 	printk("XDFS: xdfs_fill_super exit successfully\n ");
 	return 0;
 }
+static struct inode *
+xdfs_iget(struct super_block *sb, unsigned long ino)
+{
+	
+	struct inode *inod;
+	struct buffer_head *bh;
+    struct xdfs_inode *raw_inode;                
+	int block;
+	uid_t i_uid;
+	gid_t i_gid;
+	printk("XDFS: xdfs_iget(%p,%d)\n",sb,ino);
+	msleep(2000);
+	
+	inod = iget_locked(sb, ino);
+	
+	printk("XDFS:iget_locked ending\n",sb,ino);
+	msleep(5000);
+	if (!inod)
+		return ERR_PTR(-ENOMEM);
+	if (!(inod->i_state & I_NEW))      
+		return inod;   
+	printk("XDFS:xdfs_iget(%p,%d) new inode ino=%d\n",sb,ino);
+	block = XDFS_INODE_BLOCK + ino;
+	bh = sb_bread(inod->i_sb,block);
+	raw_inode = (struct xdfs_inode *)(bh->b_data);   //play the role of ext2_get_inode其实，这样读，还有风险，风险就是：可能存在字节序的情况，所以，像ext3等都要考虑字节序
+	
+	inod->i_mode = raw_inode->mode;
+	if(S_ISREG(inod->i_mode))
+	{
+		printk("XDFS: it is a common file\n");
+	    inod->i_mode |= S_IFREG;
+	    inod->i_op = &xdfs_file_inops;
+	    inod->i_fop = &xdfs_file_operations;
+	    inod->i_mapping->a_ops = &xdfs_aops;  
+	}
+	else
+	{
+		printk("XDFS: it is a directory\n");
+		inod->i_mode |= S_IFDIR;
+		inod->i_op = &xdfs_dir_inops;
+		inod->i_fop = &xdfs_dir_operations;
+	}
+    inod->i_uid.val = raw_inode->uid;
+    inod->i_gid.val = raw_inode->gid;
+    set_nlink(inod,raw_inode->i_count.counter);
+    inod->i_size = raw_inode->i_size;
+    inod->i_blocks = raw_inode->blocks;
+	inod->i_blkbits = NUM_BLK; 
+	
+	inod->i_private=(void*)kvmalloc(sizeof(struct xdfs_inode),GFP_KERNEL);   //内核分配
+	memcpy(inod->i_private, raw_inode, sizeof(struct xdfs_inode));    //raw_inode:struct xdfs_incore_inode类型
+	brelse(bh);
+	inod->i_flags &= ~(S_SYNC | S_APPEND | S_IMMUTABLE | S_NOATIME |
+                      S_DIRSYNC | S_DAX);
+  	inod->i_flags |= S_SYNC;
+	printk("XDFS: xdfs_iget ending\n");
+  	return inod;
+} 
+static int 
+xdfs_sync_fs(struct super_block *sb, int wait)
+{
+	printk("XDFS: xdfs_sync_fs(%x) start \n", sb);
+	struct buffer_head *bh = (strcut xdfs_superblock*)(sb->s_fs_info)->bh;
+	
+	/* Is superblock read only? */
+	if(!sb_rdonly(sb))
+	{
+		/* mark it dirty */	
+		mark_buffer_dirty(bh);
+		if(wait)
+			sync_dirty_buffer(bh);
 
+		printk("XDFS: xdfs_sync_fs(%x) exit \n",sb);
+		return 0;
+	}
+	return 0;
+}
 static struct file_system_type xdfs_fs_type = {
   .owner = THIS_MODULE, 
   .name = "xdfs",
@@ -202,9 +276,9 @@ static struct file_system_type xdfs_fs_type = {
 
 static struct dentry *xdfs_get_super(struct file_system_type *fs_type, int flags, const char *dev_name, void *data)
 {
-  printk("xdfs: mount begin");
+  printk("XDFS: mount begin");
   struct dentry *ret = mount_bdev(fs_type, flags, dev_name, data, xdfs_fill_super);
-  printk("xdfs: mount success");
+  printk("XDFS: mount success");
   return ret;
 }
 
@@ -212,11 +286,169 @@ static int __init init_xdfs_fs(void)
 {
   return register_filesystem(&xdfs_fs_type);
 }
+MODULE_ALIAS_FS("xdfs");
 
 static void __exit exit_xdfs_fs(void)
 {
   unregister_filesystem(&xdfs_fs_type);
 }
 
+/* operations set  and achievement*/
+// all is commented to test mount ? all achieve printk to test mount(used)
+struct super_operations xdfs_sops = {
+    //read_inode : xdfs_read_inode,//2.6没有这一项 已经和iget合并为my_iget
+	//alloc_inode : xdfs_alloc_inode,
+	write_inode : xdfs_write_inode,
+	evict_inode : xdfs_evict_inode,
+	put_super : xdfs_put_super,
+	sync_fs : xdfs_write_super,
+	statfs : xdfs_statfs,
+    //drop_inode: xdfs_delete_inode,//generic_drop_inode,//如果这里不定义的话 系统会自动调用generic_drop_inode
+};
+int 
+xdfs_write_inode(struct inode *inode, struct writeback_control *wbc)
+{
+	printk("XDFS: write_inode is called inode is (%p) wbc is (%p)\n",inode,wbc);
+	return 0;
+}
+void 
+xdfs_evict_inode(struct inode * inode)
+{
+	printk("XDFS: evict_inode is called inode is (%p)\n",inode);
+	return;
+}
+void 
+xdfs_put_super(struct super_block *s)
+{
+	printk("XDFS: xdfs_put_super(%p) is called\n",s);
+	struct buffer_head *bh = (strcut xdfs_superblock*)(sb->s_fs_info)->bh;
+	brelse(bh);
+	printk("XDFS: xdfs_put_super(%p) return\n",s);
+}
+int 
+xdfs_write_super(struct super_block *sb,int wait)
+{
+	printk("XDFS: xdfs_write_super(%p) is called\n",sb);
+	struct buffer_head *bh = (strcut xdfs_superblock*)(sb->s_fs_info)->bh;
+
+	mark_buffer_dirty(bh);
+	printk("XDFS: xdfs_write_super(%p) return\n",sb);
+	return 0;
+}
+int 
+xdfs_statfs(struct dentry *dentry, struct kstatfs * buf)
+{
+	printk("XDFS: statfs is called dentry is (%p),kstatfs is (%p)\n",dentry,buf);
+	return 0;
+}
+/* operations about file,inode,address*/
+
+struct address_space_operations xdfs_aops = {
+    //是否需要
+    // readpage : my_readpage,
+    // writepage : my_writepage,
+    // sync_page : block_sync_page,
+    // prepare_write : my_prepare_write,
+    // commit_write : generic_commit_write,
+    // bmap : my_bmap,
+};
+struct inode_operations xdfs_file_inops = {
+    //这个地方我觉得编写的有问题//是否需要
+    //link : my_link,
+    //unlink : my_unlink,
+};
+struct file_operations xdfs_file_operations = {
+  open : xdfs_open,
+  read_iter : xdfs_read_iter,
+  write_iter : xdfs_write_iter,
+  splice_read : xdfs_splice_read,
+  splice_write : xdfs_splice_write,
+  llseek : xdfs_file_llseek,
+  mmap : xdfs_file_mmap,
+  //  aio_read : generic_file_aio_read,
+  //  aio_write : generic_file_aio_write,
+  fsync : xdfs_file_fsync, //给文件里面也加一个fsync就可以用vi 修改文件实现同步。
+};
+
+static int 
+xdfs_open(struct inode *inode, struct file *filp)
+{
+  printk("XDFS: open is called\n");
+  int error;
+  error = generic_file_open(inode, filp);
+  printk("XDFS: open return\n");
+  return error;
+}
+
+static ssize_t 
+xdfs_read_iter(struct kiocb *iocb, struct iov_iter *to)
+{
+  printk("XDFS: read_iter is called\n");
+  ssize_t error;
+  error = generic_file_read_iter(iocb, to);
+  printk("XDFS: read_iter return\n");
+  return error;
+}
+static ssize_t 
+xdfs_write_iter(struct kiocb *iocb, struct iov_iter *from)
+{
+  printk("XDFS: write_iter is called\n");
+  ssize_t error;
+  error = generic_file_write_iter(iocb, from);
+  printk("XDFS: write_iter return\n");
+  return error;
+}
+
+static ssize_t 
+xdfs_splice_read(struct file *in, loff_t *ppos,
+				 struct pipe_inode_info *pipe, size_t len,
+				 unsigned int flags)
+{
+  printk("XDFS: splice_read is called\n");
+  ssize_t error;
+  error = generic_file_read_iter(in, ppos,pipe,len,flags);
+  printk("XDFS: splice_read return\n");
+  return error;
+}
+
+static ssize_t
+xdfs_splice_write(struct pipe_inode_info *pipe, struct file *out,
+			  loff_t *ppos, size_t len, unsigned int flags)
+{
+  printk("XDFS: write is called\n");
+  ssize_t error;
+  error = iter_file_splice_write(ppos,out,pipe,len,flags);
+  printk("XDFS: splice_writsplice_e return\n");
+  return error;
+}
+static loff_t 
+xdfs_file_llseek(struct file *file, loff_t offset, int whence)
+{
+  printk("XDFS: file_llseek is called\n");
+  loff_t error;
+  error = generic_file_llseek(file,offset,whence);
+  printk("XDFS: file_llseek return\n");
+  return error;
+}
+
+static int 
+xdfs_file_mmap(struct file *file, struct vm_area_struct *vma)
+{
+  printk("XDFS: file_mmap is called\n");
+  int error;
+  error = generic_file_mmap(file,vma);
+  printk("XDFS: file_mmap return\n");
+  return error;
+}
+
+static int 
+xdfs_file_fsync(struct file *file, loff_t start, loff_t end, int datasync)
+{
+  printk("XDFS: file_fsync is called\n");
+  int error;
+  error = generic_file_sync(file,vma);
+  printk("XDFS: file_fsync return\n");
+  return error;
+}
 module_init(init_xdfs_fs)
 module_exit(exit_xdfs_fs)
