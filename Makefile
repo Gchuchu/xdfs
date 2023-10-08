@@ -1,6 +1,6 @@
 # make file for file system kernel module
 
-CFLAGS := -Wall –g –std=c99
+CFLAGS := -Wall –std=c99
 obj-m:= xdfs.o
 CURRENT_PATH:=$(shell pwd)
 LINUX_KERNEL_VERSION:=$(shell uname -r)

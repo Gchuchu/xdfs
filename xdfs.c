@@ -123,23 +123,23 @@ static struct xdfs_superblock {
 	struct buffer_head* bh;
 };
 
-static struct address_space_operations	xdfs_aops;
-static struct file_operations 			xdfs_dir_operations;
-static struct inode_operations 		xdfs_dir_inops;
-static static struct file_operations 			xdfs_file_operations;
-static struct inode_operations 		xdfs_file_inops;
+static struct address_space_operations xdfs_aops;
+static struct file_operations xdfs_dir_operations;
+static struct inode_operations xdfs_dir_inops;
+static static struct file_operations xdfs_file_operations;
+static struct inode_operations xdfs_file_inops;
 static struct file_system_type xdfs_fs_type;
 /*all func declaration*/
 static int xdfs_fill_super(struct super_block *sb, void *data, int silent);
 static struct inode *xdfs_iget(struct super_block *sb, unsigned long ino);
-static int xdfs_sync_fs(struct super_block *sb, int wait)
-static struct dentry *xdfs_get_super(struct file_system_type *fs_type, int flags, const char *dev_name, void *data)
+static int xdfs_sync_fs(struct super_block *sb, int wait);
+static struct dentry *xdfs_get_super(struct file_system_type *fs_type, int flags, const char *dev_name, void *data);
 
-int xdfs_write_inode(struct inode *inode, struct writeback_control *wbc);
-void xdfs_evict_inode(struct inode * inode);
-void xdfs_put_super(struct super_block *s);
-int xdfs_write_super(struct super_block *sb,int wait);
-int xdfs_statfs(struct dentry *dentry, struct kstatfs * buf);
+static int xdfs_write_inode(struct inode *inode, struct writeback_control *wbc);
+static void xdfs_evict_inode(struct inode * inode);
+static void xdfs_put_super(struct super_block *s);
+static int xdfs_write_super(struct super_block *sb,int wait);
+static int xdfs_statfs(struct dentry *dentry, struct kstatfs * buf);
 
 static int xdfs_open(struct inode *inode, struct file *filp);
 static ssize_t xdfs_read_iter(struct kiocb *iocb, struct iov_iter *to);
@@ -318,7 +318,7 @@ static void __exit exit_xdfs_fs(void)
 
 /* operations set  and achievement*/
 // all is commented to test mount ? all achieve printk to test mount(used)
-struct super_operations xdfs_sops = {
+static struct super_operations xdfs_sops = {
     //read_inode : xdfs_read_inode,//2.6没有这一项 已经和iget合并为my_iget
 	//alloc_inode : xdfs_alloc_inode,
 	write_inode : xdfs_write_inode,
@@ -328,19 +328,19 @@ struct super_operations xdfs_sops = {
 	statfs : xdfs_statfs,
     //drop_inode: xdfs_delete_inode,//generic_drop_inode,//如果这里不定义的话 系统会自动调用generic_drop_inode
 };
-int 
+static int 
 xdfs_write_inode(struct inode *inode, struct writeback_control *wbc)
 {
 	printk("XDFS: write_inode is called inode is (%p) wbc is (%p)\n",inode,wbc);
 	return 0;
 }
-void 
+static void 
 xdfs_evict_inode(struct inode * inode)
 {
 	printk("XDFS: evict_inode is called inode is (%p)\n",inode);
 	return;
 }
-void 
+static void 
 xdfs_put_super(struct super_block *s)
 {
 	printk("XDFS: xdfs_put_super(%p) is called\n",s);
@@ -348,7 +348,7 @@ xdfs_put_super(struct super_block *s)
 	brelse(bh);
 	printk("XDFS: xdfs_put_super(%p) return\n",s);
 }
-int 
+static int 
 xdfs_write_super(struct super_block *sb,int wait)
 {
 	printk("XDFS: xdfs_write_super(%p) is called\n",sb);
@@ -358,7 +358,7 @@ xdfs_write_super(struct super_block *sb,int wait)
 	printk("XDFS: xdfs_write_super(%p) return\n",sb);
 	return 0;
 }
-int 
+static int 
 xdfs_statfs(struct dentry *dentry, struct kstatfs * buf)
 {
 	printk("XDFS: statfs is called dentry is (%p),kstatfs is (%p)\n",dentry,buf);
@@ -366,7 +366,7 @@ xdfs_statfs(struct dentry *dentry, struct kstatfs * buf)
 }
 /* operations about file,inode,address*/
 
-struct address_space_operations xdfs_aops = {
+static struct address_space_operations xdfs_aops = {
     //是否需要
     // readpage : my_readpage,
     // writepage : my_writepage,
@@ -375,12 +375,12 @@ struct address_space_operations xdfs_aops = {
     // commit_write : generic_commit_write,
     // bmap : my_bmap,
 };
-struct inode_operations xdfs_file_inops = {
+static struct inode_operations xdfs_file_inops = {
     //这个地方我觉得编写的有问题//是否需要
     //link : my_link,
     //unlink : my_unlink,
 };
-struct file_operations xdfs_file_operations = {
+static struct file_operations xdfs_file_operations = {
   open : xdfs_open,
   read_iter : xdfs_read_iter,
   write_iter : xdfs_write_iter,
@@ -429,7 +429,7 @@ xdfs_splice_read(struct file *in, loff_t *ppos,
 {
   printk("XDFS: splice_read is called\n");
   ssize_t error;
-  error = generic_file_read_iter(in, ppos,pipe,len,flags);
+  error = generic_file_splice_read(in, ppos,pipe,len,flags);
   printk("XDFS: splice_read return\n");
   return error;
 }
@@ -440,7 +440,7 @@ xdfs_splice_write(struct pipe_inode_info *pipe, struct file *out,
 {
   printk("XDFS: write is called\n");
   ssize_t error;
-  error = iter_file_splice_write(ppos,out,pipe,len,flags);
+  error = iter_file_splice_write(pipe,out,ppos,len,flags);
   printk("XDFS: splice_writsplice_e return\n");
   return error;
 }
@@ -469,7 +469,7 @@ xdfs_file_fsync(struct file *file, loff_t start, loff_t end, int datasync)
 {
   printk("XDFS: file_fsync is called\n");
   int error;
-  error = generic_file_fsync(file,vma);
+  error = generic_file_fsync(file, start, end, datasync);
   printk("XDFS: file_fsync return\n");
   return error;
 }
