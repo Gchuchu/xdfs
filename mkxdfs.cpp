@@ -118,6 +118,7 @@ struct xdfs_superblock {
     UINT32        s_inode;	/* The number of FIB0 block */
     UINT32        s_nbfree;	/* The num of free blk */
     UINT32        s_block;	/* The num of blocks */
+	struct buffer_head* bh;
 };
 
 /*************************DEFINE_END*************************/ 

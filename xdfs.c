@@ -8,7 +8,9 @@
 #include <linux/statfs.h>
 #include <asm/uaccess.h> 		/* copy_to_user */
 #include <linux/buffer_head.h>
-#include <linux/time.h>			/* struct timespec */
+#include <linux/types.h>
+#include <linux/time_types.h>
+#include <linux/time.h>
 #include <linux/sched.h>
 #include <linux/device.h>
 #include <linux/fcntl.h>
@@ -123,10 +125,11 @@ static struct xdfs_superblock {
 	struct buffer_head* bh;
 };
 
+static struct super_operations xdfs_sops;
 static struct address_space_operations xdfs_aops;
 static struct file_operations xdfs_dir_operations;
 static struct inode_operations xdfs_dir_inops;
-static static struct file_operations xdfs_file_operations;
+static struct file_operations xdfs_file_operations;
 static struct inode_operations xdfs_file_inops;
 static struct file_system_type xdfs_fs_type;
 /*all func declaration*/
@@ -170,7 +173,7 @@ xdfs_fill_super(struct super_block *sb, void *data, int silent)
 	if(IS_ERR(bdev))
 		return -ENOMEM;
 	else
-		printk(" XDFS: RIGHT in xdfs_fill_super(s->s_bdev = %p, block_size = %x)\n", bdev, bdev->bd_block_size);
+		printk(" XDFS: RIGHT in xdfs_fill_super(s->s_bdev = %p)\n", bdev);
 	
 	/* set superblock parameter and read xdfs_superblock from the device */
 	printk("XDFS: sb_bread starting\n");
@@ -222,7 +225,7 @@ xdfs_iget(struct super_block *sb, unsigned long ino)
 	int block;
 	uid_t i_uid;
 	gid_t i_gid;
-	printk("XDFS: xdfs_iget(%p,%d)\n",sb,ino);
+	printk("XDFS: xdfs_iget(%p,%ld)\n",sb,ino);
 	msleep(2000);
 	
 	inod = iget_locked(sb, ino);
@@ -233,7 +236,7 @@ xdfs_iget(struct super_block *sb, unsigned long ino)
 		return ERR_PTR(-ENOMEM);
 	if (!(inod->i_state & I_NEW))      
 		return inod;   
-	printk("XDFS:xdfs_iget(%p,%d) new inode ino=%d\n",sb,ino);
+	printk("XDFS:xdfs_iget(%p,%ld) new inode ino=%ld\n",sb,ino,ino);
 	block = XDFS_INODE_BLOCK + ino;
 	bh = sb_bread(inod->i_sb,block);
 	raw_inode = (struct xdfs_inode *)(bh->b_data);   //play the role of ext2_get_inode其实，这样读，还有风险，风险就是：可能存在字节序的情况，所以，像ext3等都要考虑字节序
@@ -256,9 +259,9 @@ xdfs_iget(struct super_block *sb, unsigned long ino)
 	}
     inod->i_uid.val = raw_inode->uid;
     inod->i_gid.val = raw_inode->gid;
-    set_nlink(inod,raw_inode->i_count.counter);
-    inod->i_size = raw_inode->i_size;
-    inod->i_blocks = raw_inode->blocks;
+    set_nlink(inod,raw_inode->inode_count.counter);
+    inod->i_size = raw_inode->file_size;
+    // inod->i_blocks = raw_inode->blocks;
 	inod->i_blkbits = NUM_BLK; 
 	
 	inod->i_private=(void*)kvmalloc(sizeof(struct xdfs_inode),GFP_KERNEL);   //内核分配
@@ -274,7 +277,7 @@ static int
 xdfs_sync_fs(struct super_block *sb, int wait)
 {
 	printk("XDFS: xdfs_sync_fs(%p) start \n", sb);
-	struct buffer_head *bh = (struct xdfs_superblock*)(sb->s_fs_info)->bh;
+	struct buffer_head *bh = ((struct xdfs_superblock*)(sb->s_fs_info))->bh;
 	
 	/* Is superblock read only? */
 	if(!sb_rdonly(sb))
@@ -344,7 +347,7 @@ static void
 xdfs_put_super(struct super_block *s)
 {
 	printk("XDFS: xdfs_put_super(%p) is called\n",s);
-	struct buffer_head *bh = (struct xdfs_superblock*)(sb->s_fs_info)->bh;
+	struct buffer_head *bh = ((struct xdfs_superblock*)(sb->s_fs_info))->bh;
 	brelse(bh);
 	printk("XDFS: xdfs_put_super(%p) return\n",s);
 }
@@ -352,7 +355,7 @@ static int
 xdfs_write_super(struct super_block *sb,int wait)
 {
 	printk("XDFS: xdfs_write_super(%p) is called\n",sb);
-	struct buffer_head *bh = (struct xdfs_superblock*)(sb->s_fs_info)->bh;
+	struct buffer_head *bh = ((struct xdfs_superblock*)(sb->s_fs_info))->bh;
 
 	mark_buffer_dirty(bh);
 	printk("XDFS: xdfs_write_super(%p) return\n",sb);
