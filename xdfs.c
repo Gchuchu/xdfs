@@ -223,14 +223,12 @@ xdfs_iget(struct super_block *sb, unsigned long ino)
 	struct buffer_head *bh;
     struct xdfs_inode *raw_inode;                
 	int block;
-	uid_t i_uid;
-	gid_t i_gid;
 	printk("XDFS: xdfs_iget(%p,%ld)\n",sb,ino);
 	msleep(2000);
 	
 	inod = iget_locked(sb, ino);
 	
-	printk("XDFS:iget_locked ending\n",sb,ino);
+	printk("XDFS:iget_locked ending\n");
 	msleep(5000);
 	if (!inod)
 		return ERR_PTR(-ENOMEM);
@@ -262,7 +260,7 @@ xdfs_iget(struct super_block *sb, unsigned long ino)
     set_nlink(inod,raw_inode->inode_count.counter);
     inod->i_size = raw_inode->file_size;
     // inod->i_blocks = raw_inode->blocks;
-	inod->i_blkbits = NUM_BLK; 
+	inod->i_blkbits = 0; 
 	
 	inod->i_private=(void*)kvmalloc(sizeof(struct xdfs_inode),GFP_KERNEL);   //内核分配
 	memcpy(inod->i_private, raw_inode, sizeof(struct xdfs_inode));    //raw_inode:struct xdfs_incore_inode类型
@@ -276,8 +274,9 @@ xdfs_iget(struct super_block *sb, unsigned long ino)
 static int 
 xdfs_sync_fs(struct super_block *sb, int wait)
 {
+	struct buffer_head *bh;
 	printk("XDFS: xdfs_sync_fs(%p) start \n", sb);
-	struct buffer_head *bh = ((struct xdfs_superblock*)(sb->s_fs_info))->bh;
+	bh = ((struct xdfs_superblock*)(sb->s_fs_info))->bh;
 	
 	/* Is superblock read only? */
 	if(!sb_rdonly(sb))
@@ -302,8 +301,9 @@ static struct file_system_type xdfs_fs_type = {
 
 static struct dentry *xdfs_get_super(struct file_system_type *fs_type, int flags, const char *dev_name, void *data)
 {
+  struct dentry *ret;
   printk("XDFS: mount begin");
-  struct dentry *ret = mount_bdev(fs_type, flags, dev_name, data, xdfs_fill_super);
+  ret = mount_bdev(fs_type, flags, dev_name, data, xdfs_fill_super);
   printk("XDFS: mount success");
   return ret;
 }
@@ -346,16 +346,18 @@ xdfs_evict_inode(struct inode * inode)
 static void 
 xdfs_put_super(struct super_block *s)
 {
+	struct buffer_head *bh;
 	printk("XDFS: xdfs_put_super(%p) is called\n",s);
-	struct buffer_head *bh = ((struct xdfs_superblock*)(sb->s_fs_info))->bh;
+	bh = ((struct xdfs_superblock*)(s->s_fs_info))->bh;
 	brelse(bh);
 	printk("XDFS: xdfs_put_super(%p) return\n",s);
 }
 static int 
 xdfs_write_super(struct super_block *sb,int wait)
 {
+	struct buffer_head *bh;
 	printk("XDFS: xdfs_write_super(%p) is called\n",sb);
-	struct buffer_head *bh = ((struct xdfs_superblock*)(sb->s_fs_info))->bh;
+	bh = ((struct xdfs_superblock*)(sb->s_fs_info))->bh;
 
 	mark_buffer_dirty(bh);
 	printk("XDFS: xdfs_write_super(%p) return\n",sb);
@@ -409,8 +411,8 @@ xdfs_open(struct inode *inode, struct file *filp)
 static ssize_t 
 xdfs_read_iter(struct kiocb *iocb, struct iov_iter *to)
 {
-  printk("XDFS: read_iter is called\n");
   ssize_t error;
+  printk("XDFS: read_iter is called\n");
   error = generic_file_read_iter(iocb, to);
   printk("XDFS: read_iter return\n");
   return error;
@@ -418,8 +420,8 @@ xdfs_read_iter(struct kiocb *iocb, struct iov_iter *to)
 static ssize_t 
 xdfs_write_iter(struct kiocb *iocb, struct iov_iter *from)
 {
-  printk("XDFS: write_iter is called\n");
   ssize_t error;
+  printk("XDFS: write_iter is called\n");
   error = generic_file_write_iter(iocb, from);
   printk("XDFS: write_iter return\n");
   return error;
@@ -430,8 +432,8 @@ xdfs_splice_read(struct file *in, loff_t *ppos,
 				 struct pipe_inode_info *pipe, size_t len,
 				 unsigned int flags)
 {
-  printk("XDFS: splice_read is called\n");
   ssize_t error;
+  printk("XDFS: splice_read is called\n");
   error = generic_file_splice_read(in, ppos,pipe,len,flags);
   printk("XDFS: splice_read return\n");
   return error;
@@ -441,8 +443,8 @@ static ssize_t
 xdfs_splice_write(struct pipe_inode_info *pipe, struct file *out,
 			  loff_t *ppos, size_t len, unsigned int flags)
 {
-  printk("XDFS: write is called\n");
   ssize_t error;
+  printk("XDFS: write is called\n");
   error = iter_file_splice_write(pipe,out,ppos,len,flags);
   printk("XDFS: splice_writsplice_e return\n");
   return error;
@@ -450,8 +452,8 @@ xdfs_splice_write(struct pipe_inode_info *pipe, struct file *out,
 static loff_t 
 xdfs_file_llseek(struct file *file, loff_t offset, int whence)
 {
-  printk("XDFS: file_llseek is called\n");
   loff_t error;
+  printk("XDFS: file_llseek is called\n");
   error = generic_file_llseek(file,offset,whence);
   printk("XDFS: file_llseek return\n");
   return error;
@@ -460,8 +462,8 @@ xdfs_file_llseek(struct file *file, loff_t offset, int whence)
 static int 
 xdfs_file_mmap(struct file *file, struct vm_area_struct *vma)
 {
-  printk("XDFS: file_mmap is called\n");
   int error;
+  printk("XDFS: file_mmap is called\n");
   error = generic_file_mmap(file,vma);
   printk("XDFS: file_mmap return\n");
   return error;
@@ -470,8 +472,8 @@ xdfs_file_mmap(struct file *file, struct vm_area_struct *vma)
 static int 
 xdfs_file_fsync(struct file *file, loff_t start, loff_t end, int datasync)
 {
-  printk("XDFS: file_fsync is called\n");
   int error;
+  printk("XDFS: file_fsync is called\n");
   error = generic_file_fsync(file, start, end, datasync);
   printk("XDFS: file_fsync return\n");
   return error;
