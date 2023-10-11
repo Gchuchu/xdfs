@@ -309,13 +309,19 @@ static struct dentry *xdfs_get_super(struct file_system_type *fs_type, int flags
 
 static int __init init_xdfs_fs(void)
 {
-  return register_filesystem(&xdfs_fs_type);
+  int ret;
+  printk("XDFS: init_xdfs_fs begin\n");
+  ret = register_filesystem(&xdfs_fs_type)
+  printk("XDFS: init_xdfs_fs success\n");
+  return ret;
 }
 MODULE_ALIAS_FS("xdfs");
 
 static void __exit exit_xdfs_fs(void)
 {
+  printk("XDFS: exit_xdfs_fs begin\n");
   unregister_filesystem(&xdfs_fs_type);
+  printk("XDFS: exit_xdfs_fs success\n");
 }
 
 /* operations set  and achievement*/

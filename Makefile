@@ -1,5 +1,9 @@
 # make file for file system kernel module
 
+CONFIG_MODULE_SIG = n
+# to solve when insmod:
+# module verification failed: 
+# signature and/or required key missing - tainting kernel
 CFLAGS := -Wall –std=c99
 obj-m:= xdfs.o
 CURRENT_PATH:=$(shell pwd)
