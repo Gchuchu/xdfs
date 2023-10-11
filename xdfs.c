@@ -168,6 +168,8 @@ xdfs_fill_super(struct super_block *sb, void *data, int silent)
 
 	printk("XDFS: xdfs_fill_super start(%p, %p, %d)\n ", sb, data, silent);
 
+	xdfs_sb = kzalloc(sizeof(struct xdfs_superblock), GFP_KERNEL);
+
 	/* bdev problem doesn't be solved */
 	bdev = sb->s_bdev;
 	if(IS_ERR(bdev))
@@ -177,7 +179,7 @@ xdfs_fill_super(struct super_block *sb, void *data, int silent)
 	
 	/* set superblock parameter and read xdfs_superblock from the device */
 	printk("XDFS: sb_bread starting\n");
-	bh = sb_bread(sb, BLKSIZE*(32768-1));
+	bh = sb_bread(sb, (32768-1));
 	xdfs_sb = (struct xdfs_superblock *)bh->b_data;
 	xdfs_sb->bh = bh;
 	msleep(5000);
@@ -311,7 +313,7 @@ static int __init init_xdfs_fs(void)
 {
   int ret;
   printk("XDFS: init_xdfs_fs begin\n");
-  ret = register_filesystem(&xdfs_fs_type)
+  ret = register_filesystem(&xdfs_fs_type);
   printk("XDFS: init_xdfs_fs success\n");
   return ret;
 }
