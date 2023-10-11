@@ -1,7 +1,7 @@
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/module.h>
-#include <linux/time.h>			/* timespec*/
+#include <linux/time64.h>			/* timespec*/
 #include <linux/string.h>
 #include <linux/fs.h>
 #include <asm/atomic.h>
@@ -9,8 +9,6 @@
 #include <linux/statfs.h>
 #include <asm/uaccess.h> 		/* copy_to_user */
 #include <linux/buffer_head.h>
-// #include <linux/types.h>
-// #include <linux/time_types.h>
 #include <linux/sched.h>
 #include <linux/device.h>
 #include <linux/fcntl.h>
@@ -105,9 +103,9 @@ struct xdfs_inode
     unsigned long inode_no;				/* Stat data, not accessed from path walking, the unique label of the inode */
     unsigned int num_link;				/* The num of the hard link  */
     loff_t file_size;					/* The file size in bytes */
-    struct timespec ctime;      		/* The last time the file attributes */
-    struct timespec mtime;      		/* The last time the file data was changed */
-    struct timespec atime;      		/* The last time the file data was accessed */
+    struct timespec64 ctime;      		/* The last time the file attributes */
+    struct timespec64 mtime;      		/* The last time the file data was changed */
+    struct timespec64 atime;      		/* The last time the file data was accessed */
     unsigned int block_size_in_bit;				/* The size of the block in bits */
     blkcnt_t using_block_num;					/* The num of blks file using */
     unsigned long state;				/* State flag  */
