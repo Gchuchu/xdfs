@@ -1,6 +1,7 @@
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/module.h>
+#include <linux/time.h>			/* timespec*/
 #include <linux/string.h>
 #include <linux/fs.h>
 #include <asm/atomic.h>
@@ -8,9 +9,8 @@
 #include <linux/statfs.h>
 #include <asm/uaccess.h> 		/* copy_to_user */
 #include <linux/buffer_head.h>
-#include <linux/types.h>
-#include <linux/time_types.h>
-#include <linux/time.h>
+// #include <linux/types.h>
+// #include <linux/time_types.h>
 #include <linux/sched.h>
 #include <linux/device.h>
 #include <linux/fcntl.h>
@@ -72,8 +72,9 @@ typedef uint64_t UINT64;
 #define XDFS_MAXFILES 4096		/* The filesystem has 4096 inodes */
 
 /* The next two item should be replaced by XDFS_BSIZE and XDFS_MAXBLOCKS */
-const int BLKSIZE = 4096;	/* Bits of one block */
-const int NUM_BLK = 32768;	/* All occupy 32768 blocks，128MB */
+const int BLKSIZE = 4096;	/* 一个块4KB */ 
+const unsigned BLKSIZE_BITS = 21;
+const int NUM_BLK = 32768;	/* 一共32768个块，128MB */ 
 
 #define PBR_JMP 0x00           	/* x86 jump instruction (3 bytes) */
 #define PBR_SYS_ID 0x03        	/* System ID string     (8 bytes) */
@@ -96,7 +97,7 @@ const int NUM_BLK = 32768;	/* All occupy 32768 blocks，128MB */
 #define SUPERBLOCK_NBLKS 1    	/* The SUPERBLOCK occupies 1 blk */
 #define XDFS_ID_STRING "xdfs" 	/* The name of xdfs*/
 
-static struct xdfs_inode
+struct xdfs_inode
 {
     umode_t mode;						/* IS directory?  */
     uid_t uid; 						/* User id */
@@ -113,9 +114,9 @@ static struct xdfs_inode
     atomic_t inode_count;					/* Inode reference count  */
 
     UINT32 addr[XDFS_DIRECT_BLOCKS];	/* Store the address */
-};
+}XDFS_INODE;
 
-static struct xdfs_superblock {
+struct xdfs_superblock {
     UINT32        s_magic;
     UINT32        s_state;	/* The superblock state : XDFS_DIRTY or XDFS_CLEAN */
     UINT32        s_nifree;	/* The num of free inode */
@@ -159,7 +160,6 @@ static int xdfs_file_fsync(struct file *file, loff_t start, loff_t end, int data
 static int 
 xdfs_fill_super(struct super_block *sb, void *data, int silent)
 {
-	printk("XDFS: xdfs_fill_super start(%p, %p, %d)\n ", sb, data, silent);
 	
 	struct buffer_head *bh;
 	struct xdfs_superblock *xdfs_sb;
@@ -167,6 +167,8 @@ xdfs_fill_super(struct super_block *sb, void *data, int silent)
 	dev_t  dev; 
 	struct block_device * bdev;
 	/* struct dax_device *dax_dev = blkdev_get_by_dev(sb->s_bdev); */
+
+	printk("XDFS: xdfs_fill_super start(%p, %p, %d)\n ", sb, data, silent);
 
 	/* bdev problem doesn't be solved */
 	bdev = sb->s_bdev;
@@ -178,14 +180,13 @@ xdfs_fill_super(struct super_block *sb, void *data, int silent)
 	/* set superblock parameter and read xdfs_superblock from the device */
 	printk("XDFS: sb_bread starting\n");
 	bh = sb_bread(sb, BLKSIZE*(32768-1));
-	sb->s_blocksize = BLKSIZE;
-	sb->s_blocksize_bits = NUM_BLK;
+	xdfs_sb = (struct xdfs_superblock *)bh->b_data;
+	xdfs_sb->bh = bh;
 	msleep(5000);
 
 	/* exam the data read from the device and written by mkfs.c */
-	xdfs_sb = (struct xdfs_superblock *)bh->b_data;
-	xdfs_sb->bh = bh;
-	
+	sb->s_blocksize = BLKSIZE;
+	sb->s_blocksize_bits = BLKSIZE_BITS;
     sb->s_fs_info = xdfs_sb;
     sb->s_magic = XDFS_MAGIC;
 
@@ -401,8 +402,8 @@ static struct file_operations xdfs_file_operations = {
 static int 
 xdfs_open(struct inode *inode, struct file *filp)
 {
-  printk("XDFS: open is called\n");
   int error;
+  printk("XDFS: open is called\n");
   error = generic_file_open(inode, filp);
   printk("XDFS: open return\n");
   return error;

@@ -32,6 +32,7 @@ typedef uint64_t UINT64;
 #define XDFS_BYTE_ORDER LITTLE_BYTE_ORDER	/* 默认小端字节序 */ 
 
 const int BLKSIZE = 4096;	/* 一个块4KB */ 
+const unsigned BLKSIZE_BITS = 21;
 const int NUM_BLK = 32768;	/* 一共32768个块，128MB */ 
 
 
