@@ -181,12 +181,12 @@ xdfs_fill_super(struct super_block *sb, void *data, int silent)
 	printk("XDFS: sb_bread starting\n");
 	bh = sb_bread(sb, (32768-1));
 	xdfs_sb = (struct xdfs_superblock *)bh->b_data;
-	printk("XDFS: xdfs_superblock-> = %d\n",xdfs_sb->s_magic);
-	printk("XDFS: xdfs_superblock-> = %d\n",xdfs_sb->s_block);
-	printk("XDFS: xdfs_superblock-> = %d\n",xdfs_sb->s_inode);
-	printk("XDFS: xdfs_superblock-> = %d\n",xdfs_sb->s_nbfree);
-	printk("XDFS: xdfs_superblock-> = %d\n",xdfs_sb->s_nifree);
-	printk("XDFS: xdfs_superblock-> = %d\n",xdfs_sb->s_state);
+	printk("XDFS: xdfs_superblock-> =s_magic  %ld\n",xdfs_sb->s_magic);
+	printk("XDFS: xdfs_superblock-> =s_block  %ld\n",xdfs_sb->s_block);
+	printk("XDFS: xdfs_superblock-> =s_inode  %ld\n",xdfs_sb->s_inode);
+	printk("XDFS: xdfs_superblock-> =s_nbfree %ld\n",xdfs_sb->s_nbfree);
+	printk("XDFS: xdfs_superblock-> =s_nifree %ld\n",xdfs_sb->s_nifree);
+	printk("XDFS: xdfs_superblock-> =s_state  %ld\n",xdfs_sb->s_state);
 	xdfs_sb->bh = bh;
 	msleep(1000);
 
@@ -246,7 +246,13 @@ xdfs_iget(struct super_block *sb, unsigned long ino)
 	block = XDFS_INODE_BLOCK + ino;
 	bh = sb_bread(inod->i_sb,block);
 	raw_inode = (struct xdfs_inode *)(bh->b_data);   //play the role of ext2_get_inode其实，这样读，还有风险，风险就是：可能存在字节序的情况，所以，像ext3等都要考虑字节序
-	
+	printk("XDFS: xdfs_inode->inode_no            %ld",raw_inode->inode_no);
+	printk("XDFS: xdfs_inode->num_link            %ld",raw_inode->num_link);
+	printk("XDFS: xdfs_inode->state               %ld",raw_inode->state);
+	printk("XDFS: xdfs_inode->block_size_in_bit   %ld",raw_inode->block_size_in_bit);
+	printk("XDFS: xdfs_inode->addr                %ld",raw_inode->addr);
+	printk("XDFS: xdfs_inode->inode_count.counter %ld",raw_inode->inode_count.counter);
+	printk("XDFS: inode->i_nlink = %ld",inod->i_nlink);
 	inod->i_mode = raw_inode->mode;
 	if(S_ISREG(inod->i_mode))
 	{
