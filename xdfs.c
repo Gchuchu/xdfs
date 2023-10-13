@@ -175,12 +175,18 @@ xdfs_fill_super(struct super_block *sb, void *data, int silent)
 	if(IS_ERR(bdev))
 		return -ENOMEM;
 	else
-		printk(" XDFS: RIGHT in xdfs_fill_super(s->s_bdev = %p)\n", bdev);
+		printk("XDFS: RIGHT in xdfs_fill_super(s->s_bdev = %p)\n", bdev);
 	
 	/* set superblock parameter and read xdfs_superblock from the device */
 	printk("XDFS: sb_bread starting\n");
 	bh = sb_bread(sb, (32768-1));
 	xdfs_sb = (struct xdfs_superblock *)bh->b_data;
+	printk("XDFS: xdfs_superblock-> = %d\n",xdfs_sb->s_magic);
+	printk("XDFS: xdfs_superblock-> = %d\n",xdfs_sb->s_block);
+	printk("XDFS: xdfs_superblock-> = %d\n",xdfs_sb->s_inode);
+	printk("XDFS: xdfs_superblock-> = %d\n",xdfs_sb->s_nbfree);
+	printk("XDFS: xdfs_superblock-> = %d\n",xdfs_sb->s_nifree);
+	printk("XDFS: xdfs_superblock-> = %d\n",xdfs_sb->s_state);
 	xdfs_sb->bh = bh;
 	msleep(5000);
 
@@ -229,13 +235,13 @@ xdfs_iget(struct super_block *sb, unsigned long ino)
 	
 	inod = iget_locked(sb, ino);
 	
-	printk("XDFS:iget_locked ending\n");
+	printk("XDFS: iget_locked ending\n");
 	msleep(5000);
 	if (!inod)
 		return ERR_PTR(-ENOMEM);
 	if (!(inod->i_state & I_NEW))      
 		return inod;   
-	printk("XDFS:xdfs_iget(%p,%ld) new inode ino=%ld\n",sb,ino,ino);
+	printk("XDFS: xdfs_iget(%p,%ld) new inode ino=%ld\n",sb,ino,ino);
 	block = XDFS_INODE_BLOCK + ino;
 	bh = sb_bread(inod->i_sb,block);
 	raw_inode = (struct xdfs_inode *)(bh->b_data);   //play the role of ext2_get_inode其实，这样读，还有风险，风险就是：可能存在字节序的情况，所以，像ext3等都要考虑字节序
@@ -259,6 +265,11 @@ xdfs_iget(struct super_block *sb, unsigned long ino)
     inod->i_uid.val = raw_inode->uid;
     inod->i_gid.val = raw_inode->gid;
     set_nlink(inod,raw_inode->inode_count.counter);
+	if(inod->n_link==0)
+	{
+		printk("XDFS ERROR: xdfs_iget bad inode\n");
+		goto bad_inode;
+	}
     inod->i_size = raw_inode->file_size;
     // inod->i_blocks = raw_inode->blocks;
 	inod->i_blkbits = 0; 
@@ -271,6 +282,11 @@ xdfs_iget(struct super_block *sb, unsigned long ino)
   	inod->i_flags |= S_SYNC;
 	printk("XDFS: xdfs_iget ending\n");
   	return inod;
+	
+bad_inode:
+	brelse(bh);
+	iget_failed(inode);
+	return ERR_PTR(ret);
 } 
 static int 
 xdfs_sync_fs(struct super_block *sb, int wait)
@@ -347,7 +363,8 @@ xdfs_write_inode(struct inode *inode, struct writeback_control *wbc)
 static void 
 xdfs_evict_inode(struct inode * inode)
 {
-	printk("XDFS: evict_inode is called inode is (%p)\n",inode);
+	printk("XDFS: evict_inode is called inode is (%p) and its n_link = 0\n",inode);
+
 	return;
 }
 static void 

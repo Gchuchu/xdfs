@@ -126,7 +126,7 @@ struct xdfs_superblock {
 
 /**
  * 使用方法
- * ./<name> /dev/loop0
+ * ./<name> /mnt/testfs
 */
 int main(int argc, char *argv[])
 {
@@ -362,7 +362,7 @@ printf("INODE_SET START\n");
 	p_inode_set = (char *)malloc(1 * sizeof(struct xdfs_inode));
 	if (p_inode_set == NULL)
     	return (ERROR);
-	memset(p_inode_set, 0xff, 1 * sizeof(struct xdfs_inode));	/*缓冲区置0xff，表示均未使用*/ 
+	memset(p_inode_set, 0x0, 1 * sizeof(struct xdfs_inode));	/*缓冲区置0xff，表示均未使用*/ 
 
 printf("part 1 is OK\n");
 
