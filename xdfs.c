@@ -188,7 +188,7 @@ xdfs_fill_super(struct super_block *sb, void *data, int silent)
 	printk("XDFS: xdfs_superblock-> = %d\n",xdfs_sb->s_nifree);
 	printk("XDFS: xdfs_superblock-> = %d\n",xdfs_sb->s_state);
 	xdfs_sb->bh = bh;
-	msleep(5000);
+	msleep(1000);
 
 	/* exam the data read from the device and written by mkfs.c */
 	sb->s_blocksize = BLKSIZE;
@@ -197,18 +197,18 @@ xdfs_fill_super(struct super_block *sb, void *data, int silent)
     sb->s_magic = XDFS_MAGIC;
 
 	printk("XDFS: op starting\n");
-	msleep(5000);
+	msleep(1000);
 	sb->s_op = &xdfs_sops;
 	sb->s_dev = dev;
 	
 	/* get a new vnode */
 	printk("XDFS: iget fronting\n");
-	msleep(5000);	
+	msleep(1000);	
     inode_rt = xdfs_iget(sb, XDFS_ROOT_INO);	/* need new function written by GuoHeng, need a error examine */
 	
 	/* make root directory */
 	printk("XDFS: d_make_root starting\n");
-	msleep(5000);
+	msleep(1000);
 	sb->s_root = d_make_root(inode_rt);
     if (!sb->s_root)
 	{
@@ -230,13 +230,14 @@ xdfs_iget(struct super_block *sb, unsigned long ino)
 	struct buffer_head *bh;
     struct xdfs_inode *raw_inode;                
 	int block;
+	long ret = -EIO;
 	printk("XDFS: xdfs_iget(%p,%ld)\n",sb,ino);
-	msleep(2000);
+	msleep(1000);
 	
 	inod = iget_locked(sb, ino);
 	
 	printk("XDFS: iget_locked ending\n");
-	msleep(5000);
+	msleep(1000);
 	if (!inod)
 		return ERR_PTR(-ENOMEM);
 	if (!(inod->i_state & I_NEW))      
@@ -265,7 +266,7 @@ xdfs_iget(struct super_block *sb, unsigned long ino)
     inod->i_uid.val = raw_inode->uid;
     inod->i_gid.val = raw_inode->gid;
     set_nlink(inod,raw_inode->inode_count.counter);
-	if(inod->n_link==0)
+	if(inod->i_nlink==0)
 	{
 		printk("XDFS ERROR: xdfs_iget bad inode\n");
 		goto bad_inode;
@@ -285,7 +286,7 @@ xdfs_iget(struct super_block *sb, unsigned long ino)
 	
 bad_inode:
 	brelse(bh);
-	iget_failed(inode);
+	iget_failed(inod);
 	return ERR_PTR(ret);
 } 
 static int 
