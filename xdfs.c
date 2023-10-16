@@ -749,7 +749,7 @@ xdfs_readdir(struct file *file, struct dir_context *ctx)
 #endif
 
 	for ( ; n < npages; n++, offset = 0) {
-		char* kaddr,limit;
+		char* kaddr,*limit;
 		struct xdfs_dir_entry* de;
 		struct page *page = xdfs_get_page(inode, n, 0, (void **)&kaddr);
 		/* may do some check aboout pages*/
