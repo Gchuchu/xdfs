@@ -34,7 +34,7 @@
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("hengG");
 
-#define DEBUG
+#define XDFS_DEBUG
 typedef int8_t   INT8;
 typedef int16_t  INT16;
 typedef int32_t  INT32;
@@ -114,6 +114,8 @@ struct xdfs_inode
     atomic_t inode_count;					/* Inode reference count  */
 
     UINT32 addr[XDFS_DIRECT_BLOCKS];	/* Store the address */
+	struct inode* vfs_inode;
+
 }XDFS_INODE;
 
 struct xdfs_superblock {
@@ -152,6 +154,8 @@ static struct inode *xdfs_iget(struct super_block *sb, unsigned long ino);
 static int xdfs_sync_fs(struct super_block *sb, int wait);
 static struct dentry *xdfs_get_super(struct file_system_type *fs_type, int flags, const char *dev_name, void *data);
 
+static struct inode *xdfs_alloc_inode(struct super_block *sb);
+
 static int xdfs_write_inode(struct inode *inode, struct writeback_control *wbc);
 static void xdfs_evict_inode(struct inode * inode);
 static void xdfs_put_super(struct super_block *s);
@@ -188,7 +192,7 @@ void xdfs_printk(const char * fmt, ...)
 	va_list args;
 	va_start(args,fmt);
 	/* 忽略了 int 返回值 */
-	vprintk("XDFS:");
+	printk("XDFS: ");
 	vprintk(fmt,args);
 	va_end(args);
 #endif
@@ -477,7 +481,7 @@ static void __exit exit_xdfs_fs(void)
 // all is commented to test mount ? all achieve printk to test mount(used)
 static struct super_operations xdfs_sops = {
     //read_inode : xdfs_read_inode,//2.6没有这一项 已经和iget合并为my_iget
-	//alloc_inode : xdfs_alloc_inode,
+	alloc_inode : xdfs_alloc_inode,
 	write_inode : xdfs_write_inode,
 	evict_inode : xdfs_evict_inode,
 	put_super : xdfs_put_super,
@@ -485,6 +489,21 @@ static struct super_operations xdfs_sops = {
 	statfs : xdfs_statfs,
     //drop_inode: xdfs_delete_inode,//generic_drop_inode,//如果这里不定义的话 系统会自动调用generic_drop_inode
 };
+
+static struct inode *
+xdfs_alloc_inode(struct super_block *sb)
+{
+	/* in ext2 its global static variable*/
+	struct kmem_cache * xdfs_inode_cachep;
+	struct xdfs_inode * xd_inode;
+	xd_inode = alloc_inode_sb(sb, xdfs_inode_cachep, GFP_KERNEL);
+	if (!xd_inode)
+		return NULL;
+	xd_inode->addr = NULL;
+	inode_set_iversion(&xd_inode->vfs_inode, 1);
+
+	return &xd_inode->vfs_inode;
+}
 static int 
 xdfs_write_inode(struct inode *inode, struct writeback_control *wbc)
 {
@@ -849,5 +868,17 @@ static struct inode_operations xdfs_inode_dir_operations = {
 	// .fileattr_get	= xdfs_dir_fileattr_get,
 	// .fileattr_set	= xdfs_dir_fileattr_set,
 };
+
+static int 
+xdfs_create (struct user_namespace * mnt_userns,
+			struct inode * dir, struct dentry * dentry,
+			umode_t mode, bool excl)
+{
+	/* 1. new inode */
+	/* 2. set file opeartions */
+	/* 3. sync to disk */
+	/* 4. add nondir */
+	return 0;
+}
 module_init(init_xdfs_fs)
 module_exit(exit_xdfs_fs)
