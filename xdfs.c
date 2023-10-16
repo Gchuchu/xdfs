@@ -29,7 +29,7 @@
 #include <linux/prefetch.h>
 #include <linux/iversion.h>
 /* VA_ARGS */
-#include<stdarg.h>
+#include<linux/stdarg.h>
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("hengG");
@@ -127,9 +127,9 @@ struct xdfs_superblock {
 };
 #define XDFS_DIR_ENTRY_BONDRY (4)
 #define XDFS_DIR_ENTRY_MASK (XDFS_DIR_ENTRY_BONDRY-1)
-#define XDFS_DIR_ENTRY_REC_LEN(name_len)	(((name_len) + 8 + XDFS_DIR_ENTRY_ROUND) & \
-					 ~XDFS_DIR_ENTRY_ROUND)
-#define XDFS_MAX_ENTRY_REC_LEN		((1<<16)-1)
+#define XDFS_DIR_ENTRY_TOTAL_LEN(name_len)	(((name_len) + 8 + XDFS_DIR_ENTRY_MASK) & \
+					 ~XDFS_DIR_ENTRY_MASK)
+#define XDFS_MAX_ENTRY_TOTAL_LEN		((1<<16)-1)
 /* size of dir_entry is 3 bytes(32 bits)*/
 struct xdfs_dir_entry{
 	UINT32 inode_no;
@@ -139,7 +139,7 @@ struct xdfs_dir_entry{
 	char name[]; 
 };
 
-static struct super_operations xdfs_sops;
+static struct super_operations 		   xdfs_sops;
 static struct address_space_operations xdfs_aops;
 static struct file_operations          xdfs_file_dir_operations;
 static struct inode_operations         xdfs_inode_dir_operations;
@@ -170,13 +170,17 @@ static loff_t xdfs_file_llseek(struct file *file, loff_t offset, int whence);
 static int xdfs_file_mmap(struct file *file, struct vm_area_struct *vma);
 static int xdfs_file_fsync(struct file *file, loff_t start, loff_t end, int datasync);
 
-static loff_t xdfs_generic_file_llseek(struct file *file, loff_t offset, int whence)
+static loff_t xdfs_generic_file_llseek(struct file *file, loff_t offset, int whence);
 static ssize_t xdfs_generic_read_dir(struct file *filp, char __user *buf, size_t siz, loff_t *ppos);
 static int xdfs_readdir(struct file *file, struct dir_context *ctx);
 static struct page * xdfs_get_page(struct inode *dir, unsigned long n, int quiet, void **page_addr);
 static inline void xdfs_put_page(struct page *page, void *page_addr);
 static struct xdfs_dir_entry * xdfs_next_dir_entry(struct xdfs_dir_entry* de);
 
+
+
+
+static void xdfs_kill_block_super(struct super_block *sb);
 /* 通用函数 */
 void xdfs_printk(const char * fmt, ...)
 {
@@ -184,10 +188,10 @@ void xdfs_printk(const char * fmt, ...)
 	va_list args;
 	va_start(args,fmt);
 	/* 忽略了 int 返回值 */
-	vprintk_func("XDFS:");
-	vprintk_func(fmt,args);
+	vprintk("XDFS:");
+	vprintk(fmt,args);
 	va_end(args);
-#endif;
+#endif
 }
 
 /* 对接函数 */
@@ -691,7 +695,8 @@ xdfs_file_fsync(struct file *file, loff_t start, loff_t end, int datasync)
 #endif
 	return error;
 }
-const struct file_operations xdfs_file_dir_operations = {
+
+static struct file_operations xdfs_file_dir_operations = {
 	.llseek		= xdfs_generic_file_llseek,
 	.read		= xdfs_generic_read_dir,
 	.iterate_shared	= xdfs_readdir,
@@ -732,10 +737,12 @@ xdfs_readdir(struct file *file, struct dir_context *ctx)
 {
 	loff_t pos = ctx->pos;
 	struct inode *inode = file_inode(file);
-	struct super_block *sb = inode->i_sb;
+	/* sb may be used to show error but i dont need */
+	// struct super_block *sb = inode->i_sb;
 	unsigned int offset = pos & ~PAGE_MASK;
 	unsigned long n = pos >> PAGE_SHIFT;
 	unsigned long npages = dir_pages(inode);
+	unsigned int last_byte;
 
 #ifdef XDFS_DEBUG
 	printk("XDFS: readdir is called\n");
@@ -755,32 +762,31 @@ xdfs_readdir(struct file *file, struct dir_context *ctx)
 		de = (struct xdfs_dir_entry *)(kaddr+offset);
 
 		
-		unsigned int last_byte = inode->i_size -( n << PAGE_SHIFT);
+		last_byte = inode->i_size -( n << PAGE_SHIFT);
 		if(last_byte > PAGE_SIZE){ last_byte = PAGE_SIZE;}
 
 
-		limit = kaddr + last_byte - XDFS_DIR_ENTRY_REC_LEN(1);
+		limit = kaddr + last_byte - XDFS_DIR_ENTRY_TOTAL_LEN(1);
 		for ( ;(char*)de <= limit; de = xdfs_next_dir_entry(de)) {
-			if (de->rec_len == 0) {
+			if (de->dir_entry_len == 0) {
 				xdfs_printk("dir entry zero-length\n");
 				xdfs_put_page(page, kaddr);
 				return -EIO;
 			}
-			if (de->inode) {
+			if (de->inode_no) {
 				unsigned char d_type = DT_UNKNOWN;
 
 				/* 用于确定此文件的文件类型，内核里面有张表*/
-				if (has_filetype)
-					d_type = fs_ftype_to_dtype(de->file_type);
+				d_type = fs_ftype_to_dtype(de->file_type);
 				/* 用于填充内核里面的目录项 */
 				if (!dir_emit(ctx, de->name, de->name_len,
-						le32_to_cpu(de->inode),
+						le32_to_cpu(de->inode_no),
 						d_type)) {
 					xdfs_put_page(page, kaddr);
 					return 0;
 				}
 			}
-			ctx->pos += xdfs_rec_len_from_disk(de->rec_len);
+			ctx->pos += le16_to_cpu(de->dir_entry_len);
 		}
 		xdfs_put_page(page, kaddr);
 		xdfs_printk("one dir_entry read\n");
@@ -824,7 +830,7 @@ xdfs_put_page(struct page *page, void *page_addr)
 	put_page(page);
 }
 
-const struct inode_operations xdfs_inode_dir_operations = {
+static struct inode_operations xdfs_inode_dir_operations = {
 	// .create		    = xdfs_dir_create,
 	// .lookup		    = xdfs_dir_lookup,
 	// .link		    = xdfs_dir_link,
