@@ -28,6 +28,8 @@
 #include <linux/posix_acl.h>
 #include <linux/prefetch.h>
 #include <linux/iversion.h>
+/* VA_ARGS */
+#include<stdarg.h>
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("hengG");
@@ -123,7 +125,12 @@ struct xdfs_superblock {
     UINT32        s_block;	/* The num of blocks */
 	struct buffer_head* bh;
 };
-
+#define XDFS_DIR_ENTRY_BONDRY (4)
+#define XDFS_DIR_ENTRY_MASK (XDFS_DIR_ENTRY_BONDRY-1)
+#define XDFS_DIR_ENTRY_REC_LEN(name_len)	(((name_len) + 8 + XDFS_DIR_ENTRY_ROUND) & \
+					 ~XDFS_DIR_ENTRY_ROUND)
+#define XDFS_MAX_ENTRY_REC_LEN		((1<<16)-1)
+/* size of dir_entry is 3 bytes(32 bits)*/
 struct xdfs_dir_entry{
 	UINT32 inode_no;
 	UINT16 dir_entry_len; 
@@ -168,8 +175,22 @@ static ssize_t xdfs_generic_read_dir(struct file *filp, char __user *buf, size_t
 static int xdfs_readdir(struct file *file, struct dir_context *ctx);
 static struct page * xdfs_get_page(struct inode *dir, unsigned long n, int quiet, void **page_addr);
 static inline void xdfs_put_page(struct page *page, void *page_addr);
+static struct xdfs_dir_entry * xdfs_next_dir_entry(struct xdfs_dir_entry* de);
 
+/* 通用函数 */
+void xdfs_printk(const char * fmt, ...)
+{
+#ifdef XDFS_DEBUG
+	va_list args;
+	va_start(args,fmt);
+	/* 忽略了 int 返回值 */
+	vprintk_func("XDFS:");
+	vprintk_func(fmt,args);
+	va_end(args);
+#endif;
+}
 
+/* 对接函数 */
 static int 
 xdfs_fill_super(struct super_block *sb, void *data, int silent)
 {
@@ -712,18 +733,68 @@ xdfs_readdir(struct file *file, struct dir_context *ctx)
 	loff_t pos = ctx->pos;
 	struct inode *inode = file_inode(file);
 	struct super_block *sb = inode->i_sb;
+	unsigned int offset = pos & ~PAGE_MASK;
+	unsigned long n = pos >> PAGE_SHIFT;
 	unsigned long npages = dir_pages(inode);
 
 #ifdef XDFS_DEBUG
 	printk("XDFS: readdir is called\n");
 #endif
 
+	for ( ; n < npages; n++, offset = 0) {
+		char* kaddr,limit;
+		struct xdfs_dir_entry* de;
+		struct page *page = xdfs_get_page(inode, n, 0, (void **)&kaddr);
+		/* may do some check aboout pages*/
+		if (IS_ERR(page)) {
+			xdfs_printk("page error\n");
+			ctx->pos += PAGE_SIZE - offset;
+			return PTR_ERR(page);
+		}
+		/* find dir_entry in data space */
+		de = (struct xdfs_dir_entry *)(kaddr+offset);
 
+		
+		unsigned int last_byte = inode->i_size -( n << PAGE_SHIFT);
+		if(last_byte > PAGE_SIZE){ last_byte = PAGE_SIZE;}
+
+
+		limit = kaddr + last_byte - XDFS_DIR_ENTRY_REC_LEN(1);
+		for ( ;(char*)de <= limit; de = xdfs_next_dir_entry(de)) {
+			if (de->rec_len == 0) {
+				xdfs_printk("dir entry zero-length\n");
+				xdfs_put_page(page, kaddr);
+				return -EIO;
+			}
+			if (de->inode) {
+				unsigned char d_type = DT_UNKNOWN;
+
+				/* 用于确定此文件的文件类型，内核里面有张表*/
+				if (has_filetype)
+					d_type = fs_ftype_to_dtype(de->file_type);
+				/* 用于填充内核里面的目录项 */
+				if (!dir_emit(ctx, de->name, de->name_len,
+						le32_to_cpu(de->inode),
+						d_type)) {
+					xdfs_put_page(page, kaddr);
+					return 0;
+				}
+			}
+			ctx->pos += xdfs_rec_len_from_disk(de->rec_len);
+		}
+		xdfs_put_page(page, kaddr);
+		xdfs_printk("one dir_entry read\n");
+	}
 #ifdef XDFS_DEBUG
 	printk("XDFS: readdir return\n");
 #endif
+	return 0;
 }
-
+static struct xdfs_dir_entry*
+xdfs_next_dir_entry(struct xdfs_dir_entry* de)
+{
+	return (struct xdfs_dir_entry*)((char*)de + le16_to_cpu(de->dir_entry_len));
+}
 static struct page * 
 xdfs_get_page(struct inode *dir, unsigned long n, int quiet, void **page_addr)
 {
@@ -749,6 +820,7 @@ static inline void
 xdfs_put_page(struct page *page, void *page_addr)
 {
 	kunmap_local(page_addr);
+	/* 用于将线性地址修改的数据落实到物理地址上，就是将内存中的页更新到磁盘中 */
 	put_page(page);
 }
 
