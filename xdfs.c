@@ -289,6 +289,12 @@ xdfs_fill_super(struct super_block *sb, void *data, int silent)
 	/* alloc root inode and mount*/
     inode_rt = xdfs_iget(sb, XDFS_ROOT_INO);	/* need new function written by GuoHeng, need a error examine */
 	
+	if (!S_ISDIR(inode_rt->i_mode)) {
+		iput(inode_rt);
+		xdfs_printk("corrupt root inode not directory\n");
+		return -1;
+	}
+
 	/* make root directory */
 #ifdef XDFS_DEBUG
 	printk("XDFS: d_make_root starting\n");
@@ -308,6 +314,7 @@ xdfs_fill_super(struct super_block *sb, void *data, int silent)
 	printk("XDFS: sync_fs begin\n");
 #endif
 	/* sync to disk */
+	//xdfs_write_super(sb);两者一样
 	xdfs_sync_fs(sb, 1);	/* 1: sync, 0: async */
 #ifdef XDFS_DEBUG
 	printk("XDFS: xdfs_fill_super exit successfully\n ");
@@ -322,7 +329,7 @@ xdfs_iget(struct super_block *sb, unsigned long ino)
 	struct inode *inod;
 	struct buffer_head *bh;
     struct xdfs_inode *raw_inode;                
-	int block;
+	// int block;
 	long ret = -EIO;
 #ifdef XDFS_DEBUG
 	printk("XDFS: xdfs_iget(%p,%ld)\n",sb,ino);
@@ -347,9 +354,10 @@ xdfs_iget(struct super_block *sb, unsigned long ino)
 #endif
 	
 	
-	raw_inode = xdfs_get_inode(inode->i_sb, ino, &bh);
+	raw_inode = xdfs_get_inode(inod->i_sb, ino, &bh);
 	
 #ifdef XDFS_DEBUG
+	printk("XDFS: xdfs_inode->mode                %ld",raw_inode->mode);
 	printk("XDFS: xdfs_inode->inode_no            %ld",raw_inode->inode_no);
 	printk("XDFS: xdfs_inode->num_link            %d",raw_inode->num_link);
 	printk("XDFS: xdfs_inode->state               %ld",raw_inode->state);
@@ -420,7 +428,7 @@ static struct xdfs_inode *xdfs_get_inode(struct super_block *sb, ino_t ino,
 					struct buffer_head **p)
 {
 	struct buffer_head * bh;
-	unsigned long block_group;
+	// unsigned long block_group;
 	unsigned long block;
 	unsigned long offset;
 	/* we dont have group */
@@ -440,8 +448,9 @@ static struct xdfs_inode *xdfs_get_inode(struct super_block *sb, ino_t ino,
 	/*
 	 * Figure out the offset within the block group inode table
 	 */
-	offset = ((ino - 1)*XDFS_INODE_SIZE);
-	block = XDFS_INODE_BLOCK-1;
+	offset = (ino*XDFS_INODE_SIZE);
+	block = XDFS_INODE_BLOCK;
+	xdfs_printk("get_inode read from (block,offset) is (%ld,%ld)",block,offset);
 	if (!(bh = sb_bread(sb, block)))
 		goto Eio;
 
@@ -454,8 +463,9 @@ Einval:
 	return ERR_PTR(-EINVAL);
 Eio:
 	xdfs_printk("get_inode sb_bread read wrong\n");
-Egdp:
 	return ERR_PTR(-EIO);
+// Egdp:
+// 	return ERR_PTR(-EIO);
 }
 
 void xdfs_set_inode_flags(struct inode *inod)
@@ -591,7 +601,7 @@ static struct super_operations xdfs_sops = {
 	write_inode : xdfs_write_inode,
 	evict_inode : xdfs_evict_inode,
 	put_super : xdfs_put_super,
-	sync_fs : xdfs_write_super,
+	sync_fs : xdfs_sync_fs,
 	statfs : xdfs_statfs,
     //drop_inode: xdfs_delete_inode,//generic_drop_inode,//如果这里不定义的话 系统会自动调用generic_drop_inode
 };

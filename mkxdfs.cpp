@@ -62,6 +62,7 @@ const int NUM_BLK = 32768;	/* 一共32768个块，128MB */
 #define INODE_SET_NBLKS 120	/* 一个inode数据结构120字节，所以需要120个块 */
 #define INODE_NUMS  4096	/* 一共4096个inode */
 #define XDFS_DIRECT_BLOCKS 16	/* The max num of blks a inode can have */
+#define XDFS_ROOT_INO 2			/* This value should equal the num of non-data zones */
     
 typedef INT64   xdfsTime_t;
 typedef INT64	fsize_t;
@@ -377,6 +378,7 @@ printf("part 1 is OK\n");
 		{
 			struct xdfs_inode* root_inode = (struct xdfs_inode*)p_inode_set;
 			root_inode->mode |= S_IFDIR;
+			root_inode->inode_no = XDFS_ROOT_INO;
 			write(devfd, p_inode_set, 1 * sizeof(struct xdfs_inode));
 			memset(p_inode_set, 0x0, 1 * sizeof(struct xdfs_inode));
 			continue;
@@ -597,7 +599,7 @@ printf("SUPERBLOCK END\n");
 	
 /*************************SUPERBLOCK_END*************************/
 	printf("struct size:\n");
-	printf("\tinode:\t%d\n",sizeof(struct xdfs_inode));
-	printf("\tsuperblock:\t%d\n",sizeof(struct xdfs_superblock));
+	printf("\tinode:\t%ld\n",sizeof(struct xdfs_inode));
+	printf("\tsuperblock:\t%ld\n",sizeof(struct xdfs_superblock));
 	return 0;	
 } 
