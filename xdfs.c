@@ -116,7 +116,13 @@ struct xdfs_inode
     UINT32 addr[XDFS_DIRECT_BLOCKS];	/* Store the address */
 	struct inode vfs_inode;
 
-}XDFS_INODE;
+};
+
+/* xdfs_inode in memory and extend something */
+struct xdfs_inode_info{
+	UINT32	i_data[15];
+	struct inode vfs_inode;
+};
 
 struct xdfs_superblock {
     UINT32        s_magic;
@@ -202,7 +208,7 @@ void xdfs_printk(const char * fmt, ...)
 static int 
 xdfs_fill_super(struct super_block *sb, void *data, int silent)
 {
-	
+
 	struct buffer_head *bh;
 	struct xdfs_superblock *xdfs_sb;
 	struct inode *inode_rt;
@@ -295,6 +301,7 @@ static struct inode *
 xdfs_iget(struct super_block *sb, unsigned long ino)
 {
 	
+	struct xdfs_inode_info* raw_inode_info;
 	struct inode *inod;
 	struct buffer_head *bh;
     struct xdfs_inode *raw_inode;                
@@ -304,8 +311,9 @@ xdfs_iget(struct super_block *sb, unsigned long ino)
 	printk("XDFS: xdfs_iget(%p,%ld)\n",sb,ino);
 	msleep(1000);
 #endif
-	
+
 	inod = iget_locked(sb, ino);
+	raw_inode_info = XDFS_I(inod);
 	
 #ifdef XDFS_DEBUG
 	printk("XDFS: iget_locked ending\n");
@@ -490,19 +498,48 @@ static struct super_operations xdfs_sops = {
     //drop_inode: xdfs_delete_inode,//generic_drop_inode,//如果这里不定义的话 系统会自动调用generic_drop_inode
 };
 
+struct kmem_cache * xdfs_inode_cachep;
+
 static struct inode *
 xdfs_alloc_inode(struct super_block *sb)
 {
-	/* in ext2 its global static variable*/
-	struct kmem_cache * xdfs_inode_cachep;
-	struct xdfs_inode * xd_inode;
+	struct xdfs_inode_info * xd_inode;
+
+	xdfs_printk("alloc_inode is called\n");
+
 	xd_inode = alloc_inode_sb(sb, xdfs_inode_cachep, GFP_KERNEL);
 	if (!xd_inode)
 		return NULL;
 	// xd_inode->addr = NULL;
 	inode_set_iversion(&xd_inode->vfs_inode, 1);
 
+	xdfs_printk("alloc_inode return\n");
+
 	return &xd_inode->vfs_inode;
+}
+
+static int __init init_inodecache(void)
+{
+	xdfs_inode_cachep = kmem_cache_create_usercopy("xdfs_inode_cache",
+				sizeof(struct xdfs_inode_info), 0,
+				(SLAB_RECLAIM_ACCOUNT|SLAB_MEM_SPREAD|
+					SLAB_ACCOUNT),
+				offsetof(struct xdfs_inode_info, i_data),
+				sizeof_field(struct xdfs_inode_info, i_data),
+				init_once);
+	if (xdfs_inode_cachep == NULL)
+		return -ENOMEM;
+	return 0;
+}
+
+static void init_once(void *foo)
+{
+	struct xdfs_inode_info *ei = (struct xdfs_inode_info *) foo;
+
+	/* mutex 暂不考虑 */
+	// rwlock_init(&ei->i_meta_lock);
+	// mutex_init(&ei->truncate_mutex);
+	inode_init_once(&ei->vfs_inode);
 }
 static int 
 xdfs_write_inode(struct inode *inode, struct writeback_control *wbc)
@@ -850,7 +887,7 @@ xdfs_put_page(struct page *page, void *page_addr)
 }
 
 static struct inode_operations xdfs_inode_dir_operations = {
-	// .create		    = xdfs_dir_create,
+	.create		    = xdfs_dir_create,
 	// .lookup		    = xdfs_dir_lookup,
 	// .link		    = xdfs_dir_link,
 	// .unlink		    = xdfs_dir_unlink,
@@ -870,15 +907,21 @@ static struct inode_operations xdfs_inode_dir_operations = {
 };
 
 static int 
-xdfs_create (struct user_namespace * mnt_userns,
+xdfs_dir_create (struct user_namespace * mnt_userns,
 			struct inode * dir, struct dentry * dentry,
 			umode_t mode, bool excl)
 {
+	xdfs_printk("dir_create is called\n");
 	/* 1. new inode */
 	/* 2. set file opeartions */
 	/* 3. sync to disk */
 	/* 4. add nondir */
+	xdfs_printk("dir_create return\n");
 	return 0;
+}
+static inline struct xdfs_inode_info *XDFS_I(struct inode *inode)
+{
+	return container_of(inode, struct xdfs_inode_info, vfs_inode);
 }
 module_init(init_xdfs_fs)
 module_exit(exit_xdfs_fs)
