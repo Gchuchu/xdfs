@@ -114,7 +114,7 @@ struct xdfs_inode
     atomic_t inode_count;					/* Inode reference count  */
 
     UINT32 addr[XDFS_DIRECT_BLOCKS];	/* Store the address */
-	struct inode* vfs_inode;
+	struct inode vfs_inode;
 
 }XDFS_INODE;
 
@@ -499,7 +499,7 @@ xdfs_alloc_inode(struct super_block *sb)
 	xd_inode = alloc_inode_sb(sb, xdfs_inode_cachep, GFP_KERNEL);
 	if (!xd_inode)
 		return NULL;
-	xd_inode->addr = NULL;
+	// xd_inode->addr = NULL;
 	inode_set_iversion(&xd_inode->vfs_inode, 1);
 
 	return &xd_inode->vfs_inode;
