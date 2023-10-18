@@ -102,6 +102,7 @@ struct xdfs_inode
     umode_t mode;						/* IS directory?  */
     uid_t uid; 						/* User id */
     gid_t gid;						/* User group id */
+	unsigned long flags;			/* file flags */
     unsigned long inode_no;				/* Stat data, not accessed from path walking, the unique label of the inode */
     unsigned int num_link;				/* The num of the hard link  */
     loff_t file_size;					/* The file size in bytes */
@@ -121,6 +122,7 @@ struct xdfs_inode
 /* xdfs_inode in memory and extend something */
 struct xdfs_inode_info{
 	UINT32	i_data[15];
+	UINT32  i_flags;
 	struct inode vfs_inode;
 };
 
@@ -349,6 +351,8 @@ xdfs_iget(struct super_block *sb, unsigned long ino)
 #endif
 	
 	inod->i_mode = raw_inode->mode;
+	raw_inode_info->i_flags = le32_to_cpu(raw_inode->i_flags);
+	xdfs_set_inode_flags(inod);
 	if(S_ISREG(inod->i_mode))
 	{
 #ifdef XDFS_DEBUG
@@ -359,14 +363,18 @@ xdfs_iget(struct super_block *sb, unsigned long ino)
 	    inod->i_fop = &xdfs_file_operations;
 	    inod->i_mapping->a_ops = &xdfs_aops;  
 	}
-	else
-	{
+	else if (S_ISDIR(inode->i_mode)) {
 #ifdef XDFS_DEBUG
 		printk("XDFS: it is a directory\n");
 #endif
 		inod->i_mode |= S_IFDIR;
 		inod->i_op = &xdfs_inode_dir_operations;
 		inod->i_fop = &xdfs_file_dir_operations;
+	} else 
+	{
+#ifdef XDFS_DEBUG
+		printk("XDFS: what type is this file ? inod->mod is\n");
+#endif
 	}
     inod->i_uid.val = raw_inode->uid;
     inod->i_gid.val = raw_inode->gid;
@@ -398,6 +406,27 @@ bad_inode:
 	iget_failed(inod);
 	return ERR_PTR(ret);
 } 
+void xdfs_set_inode_flags(struct inode *inode)
+{
+	unsigned int flags = XDFS_I(inode)->i_flags;
+
+	inode->i_flags &= ~(S_SYNC | S_APPEND | S_IMMUTABLE | S_NOATIME |
+				S_DIRSYNC | S_DAX);
+	// if (flags & EXT2_SYNC_FL)
+	// 	inode->i_flags |= S_SYNC;
+	// if (flags & EXT2_APPEND_FL)
+	// 	inode->i_flags |= S_APPEND;
+	// if (flags & EXT2_IMMUTABLE_FL)
+	// 	inode->i_flags |= S_IMMUTABLE;
+	// if (flags & EXT2_NOATIME_FL)
+	// 	inode->i_flags |= S_NOATIME;
+	// if (flags & EXT2_DIRSYNC_FL)
+	// 	inode->i_flags |= S_DIRSYNC;
+	// if (test_opt(inode->i_sb, DAX) && S_ISREG(inode->i_mode))
+	// 	inode->i_flags |= S_DAX;
+	if (S_ISREG(inode->i_mode))
+		inode->i_flags |= S_DAX;
+}
 static int 
 xdfs_sync_fs(struct super_block *sb, int wait)
 {
@@ -471,9 +500,13 @@ static int __init init_xdfs_fs(void)
 	ret = init_inodecache();
 	if(ret!=0)
 	{
-		goto err;
+		return ret;
 	}
 	ret = register_filesystem(&xdfs_fs_type);
+	if(ret!=0)
+	{
+		goto err;
+	}
 
 #ifdef XDFS_DEBUG
 	printk("XDFS: init_xdfs_fs success\n");
@@ -481,7 +514,7 @@ static int __init init_xdfs_fs(void)
 	return ret;
 err:
 	destroy_inodecache();
-	return err;
+	return ret;
 }
 MODULE_ALIAS_FS("xdfs");
 
@@ -533,6 +566,7 @@ xdfs_alloc_inode(struct super_block *sb)
 
 static int __init init_inodecache(void)
 {
+	xdfs_printk("init_inodecache is called\n");
 	xdfs_inode_cachep = kmem_cache_create_usercopy("xdfs_inode_cache",
 				sizeof(struct xdfs_inode_info), 0,
 				(SLAB_RECLAIM_ACCOUNT|SLAB_MEM_SPREAD|
@@ -541,28 +575,36 @@ static int __init init_inodecache(void)
 				sizeof_field(struct xdfs_inode_info, i_data),
 				init_once);
 	if (xdfs_inode_cachep == NULL)
+	{
+		xdfs_printk("init_inodecache exit no mem");
 		return -ENOMEM;
+	}
+	xdfs_printk("init_inodecache exit successfully\n");
 	return 0;
 }
 
 static void init_once(void *foo)
 {
 	struct xdfs_inode_info *ei = (struct xdfs_inode_info *) foo;
+	xdfs_printk("init_once is called\n");
 
 	/* mutex 暂不考虑 */
 	// rwlock_init(&ei->i_meta_lock);
 	// mutex_init(&ei->truncate_mutex);
 	inode_init_once(&ei->vfs_inode);
+	xdfs_printk("init_once return\n");
 }
 
 static void destroy_inodecache(void)
 {
+	xdfs_printk("destory_inode_cache is called\n");
 	/*
 	 * Make sure all delayed rcu free inodes are flushed before we
 	 * destroy cache.
 	 */
 	rcu_barrier();
 	kmem_cache_destroy(xdfs_inode_cachep);
+	xdfs_printk("destory_inode_cache return\n");
 }
 
 static int 
@@ -781,7 +823,7 @@ static struct file_operations xdfs_file_dir_operations = {
 	.read		= xdfs_generic_read_dir,
 	.iterate_shared	= xdfs_readdir,
 	// .unlocked_ioctl = xdfs_ioctl,
-	// .fsync		= xdfs_fsync,
+	.fsync		= xdfs_fsync,
 };
 
 static loff_t 
@@ -910,6 +952,21 @@ xdfs_put_page(struct page *page, void *page_addr)
 	put_page(page);
 }
 
+static int xdfs_fsync(struct file *file, loff_t start, loff_t end, int datasync)
+{
+	int ret;
+	struct super_block *sb = file->f_mapping->host->i_sb;
+	xdfs_printk("xdfs_fsync is called\n");
+
+	ret = generic_file_fsync(file, start, end, datasync);
+	if (ret == -EIO)
+	{
+		xdfs_printk("xdfs_fsync return -EIO\n");
+	}
+	
+	xdfs_printk("xdfs_fsync return \n");
+	return ret;
+}
 static struct inode_operations xdfs_inode_dir_operations = {
 	.create		    = xdfs_dir_create,
 	// .lookup		    = xdfs_dir_lookup,

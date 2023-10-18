@@ -79,6 +79,7 @@ struct xdfs_inode
     umode_t mode;						/* IS directory?  */
     uid_t uid; 						/* User id */
     gid_t gid;						/* User group id */
+	unsigned long flags;			/* file flags */
     unsigned long inode_no;				/* Stat data, not accessed from path walking, the unique label of the inode */
     unsigned int num_link;				/* The num of the hard link  */
     loff_t file_size;					/* The file size in bytes */
