@@ -161,6 +161,9 @@ static int xdfs_sync_fs(struct super_block *sb, int wait);
 static struct dentry *xdfs_get_super(struct file_system_type *fs_type, int flags, const char *dev_name, void *data);
 
 static struct inode *xdfs_alloc_inode(struct super_block *sb);
+static int __init init_inodecache(void);
+static void init_once(void *foo);
+static void destroy_inodecache(void);
 
 static int xdfs_write_inode(struct inode *inode, struct writeback_control *wbc);
 static void xdfs_evict_inode(struct inode * inode);
@@ -187,8 +190,10 @@ static struct page * xdfs_get_page(struct inode *dir, unsigned long n, int quiet
 static inline void xdfs_put_page(struct page *page, void *page_addr);
 static struct xdfs_dir_entry * xdfs_next_dir_entry(struct xdfs_dir_entry* de);
 
-
-
+static int xdfs_dir_create (struct user_namespace * mnt_userns,
+			struct inode * dir, struct dentry * dentry,
+			umode_t mode, bool excl);
+static inline struct xdfs_inode_info *XDFS_I(struct inode *inode);
 
 static void xdfs_kill_block_super(struct super_block *sb);
 /* 通用函数 */
@@ -338,7 +343,7 @@ xdfs_iget(struct super_block *sb, unsigned long ino)
 	printk("XDFS: xdfs_inode->num_link            %d",raw_inode->num_link);
 	printk("XDFS: xdfs_inode->state               %ld",raw_inode->state);
 	printk("XDFS: xdfs_inode->block_size_in_bit   %d",raw_inode->block_size_in_bit);
-	printk("XDFS: xdfs_inode->addr                %d",raw_inode->addr);
+	printk("XDFS: xdfs_inode->addr                %p",raw_inode->addr);
 	printk("XDFS: xdfs_inode->inode_count.counter %d",raw_inode->inode_count.counter);
 	printk("XDFS: inode->i_nlink =   %d",inod->i_nlink);
 #endif
@@ -463,12 +468,20 @@ static int __init init_xdfs_fs(void)
 	printk("XDFS: init_xdfs_fs begin\n");
 #endif
 
+	ret = init_inodecache();
+	if(ret!=0)
+	{
+		goto err;
+	}
 	ret = register_filesystem(&xdfs_fs_type);
 
 #ifdef XDFS_DEBUG
 	printk("XDFS: init_xdfs_fs success\n");
 #endif
-  return ret;
+	return ret;
+err:
+	destroy_inodecache();
+	return err;
 }
 MODULE_ALIAS_FS("xdfs");
 
@@ -541,6 +554,17 @@ static void init_once(void *foo)
 	// mutex_init(&ei->truncate_mutex);
 	inode_init_once(&ei->vfs_inode);
 }
+
+static void destroy_inodecache(void)
+{
+	/*
+	 * Make sure all delayed rcu free inodes are flushed before we
+	 * destroy cache.
+	 */
+	rcu_barrier();
+	kmem_cache_destroy(xdfs_inode_cachep);
+}
+
 static int 
 xdfs_write_inode(struct inode *inode, struct writeback_control *wbc)
 {
