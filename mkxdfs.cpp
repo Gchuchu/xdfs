@@ -74,6 +74,10 @@ typedef struct {
 	int counter;
 } atomic_t;
 
+struct timespec64 {
+	long long	tv_sec;			/* seconds */
+	long		tv_nsec;		/* nanoseconds */
+};
 struct xdfs_inode
 {
     umode_t mode;						/* IS directory?  */
@@ -83,9 +87,9 @@ struct xdfs_inode
     unsigned long inode_no;				/* Stat data, not accessed from path walking, the unique label of the inode */
     unsigned int num_link;				/* The num of the hard link  */
     loff_t file_size;					/* The file size in bytes */
-    struct timespec ctime;      		/* The last time the file attributes */
-    struct timespec mtime;      		/* The last time the file data was changed */
-    struct timespec atime;      		/* The last time the file data was accessed */
+    struct timespec64 ctime;      		/* The last time the file attributes */
+    struct timespec64 mtime;      		/* The last time the file data was changed */
+    struct timespec64 atime;      		/* The last time the file data was accessed */
     unsigned int block_size_in_bit;				/* The size of the block in bits */
     blkcnt_t using_block_num;					/* The num of blks file using */
     unsigned long state;				/* State flag  */
@@ -369,6 +373,14 @@ printf("part 1 is OK\n");
 
 	for(int i = 0; i < INODE_NUMS; i++)
 	{
+		if(i==2)
+		{
+			struct xdfs_inode* root_inode = (struct xdfs_inode*)p_inode_set;
+			root_inode->mode |= S_IFDIR;
+			write(devfd, p_inode_set, 1 * sizeof(struct xdfs_inode));
+			memset(p_inode_set, 0x0, 1 * sizeof(struct xdfs_inode));
+			continue;
+		}
 		write(devfd, p_inode_set, 1 * sizeof(struct xdfs_inode));
 	}
 	
@@ -584,6 +596,8 @@ printf("part 4 is OK\n");
 printf("SUPERBLOCK END\n");
 	
 /*************************SUPERBLOCK_END*************************/
-
+	printf("struct size:\n");
+	printf("\tinode:\t%d\n",sizeof(struct xdfs_inode));
+	printf("\tsuperblock:\t%d\n",sizeof(struct xdfs_superblock));
 	return 0;	
 } 

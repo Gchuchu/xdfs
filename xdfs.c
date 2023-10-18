@@ -69,6 +69,11 @@ typedef uint64_t UINT64;
 #define XDFS_MAXBLOCKS 32768	/* The filesystem has 32768 blks */
 #define XDFS_INODE_BLOCK 5		/* The INODE_SET starts from 5th blk(count from 0) */
 #define XDFS_ROOT_INO 2			/* This value should equal the num of non-data zones */
+#define XDFS_FIRST_INO 3
+#define XDFS_MAX_INO 4096
+#define XDFS_INODE_SIZE 192
+#define XDFS_SB_SIZE 32
+
 #define XDFS_MAXFILES 4096		/* The filesystem has 4096 inodes */
 
 /* The next two item should be replaced by XDFS_BSIZE and XDFS_MAXBLOCKS */
@@ -159,6 +164,9 @@ static struct file_system_type         xdfs_fs_type;
 /*all func declaration*/
 static int xdfs_fill_super(struct super_block *sb, void *data, int silent);
 static struct inode *xdfs_iget(struct super_block *sb, unsigned long ino);
+static struct xdfs_inode *xdfs_get_inode(struct super_block *sb, ino_t ino,
+					struct buffer_head **p);
+void xdfs_set_inode_flags(struct inode *inode);
 static int xdfs_sync_fs(struct super_block *sb, int wait);
 static struct dentry *xdfs_get_super(struct file_system_type *fs_type, int flags, const char *dev_name, void *data);
 
@@ -190,6 +198,8 @@ static ssize_t xdfs_generic_read_dir(struct file *filp, char __user *buf, size_t
 static int xdfs_readdir(struct file *file, struct dir_context *ctx);
 static struct page * xdfs_get_page(struct inode *dir, unsigned long n, int quiet, void **page_addr);
 static inline void xdfs_put_page(struct page *page, void *page_addr);
+static int xdfs_fsync(struct file *file, loff_t start, loff_t end, int datasync);
+
 static struct xdfs_dir_entry * xdfs_next_dir_entry(struct xdfs_dir_entry* de);
 
 static int xdfs_dir_create (struct user_namespace * mnt_userns,
@@ -336,10 +346,9 @@ xdfs_iget(struct super_block *sb, unsigned long ino)
 	printk("XDFS: xdfs_iget(%p,%ld) new inode ino=%ld\n",sb,ino,ino);
 #endif
 	
-	block = XDFS_INODE_BLOCK + ino;
-	bh = sb_bread(inod->i_sb,block);
-	raw_inode = (struct xdfs_inode *)(bh->b_data);   //play the role of ext2_get_inode其实，这样读，还有风险，风险就是：可能存在字节序的情况，所以，像ext3等都要考虑字节序
-
+	
+	raw_inode = xdfs_get_inode(inode->i_sb, ino, &bh);
+	
 #ifdef XDFS_DEBUG
 	printk("XDFS: xdfs_inode->inode_no            %ld",raw_inode->inode_no);
 	printk("XDFS: xdfs_inode->num_link            %d",raw_inode->num_link);
@@ -351,7 +360,7 @@ xdfs_iget(struct super_block *sb, unsigned long ino)
 #endif
 	
 	inod->i_mode = raw_inode->mode;
-	raw_inode_info->i_flags = le32_to_cpu(raw_inode->i_flags);
+	raw_inode_info->i_flags = le32_to_cpu(raw_inode->flags);
 	xdfs_set_inode_flags(inod);
 	if(S_ISREG(inod->i_mode))
 	{
@@ -363,7 +372,7 @@ xdfs_iget(struct super_block *sb, unsigned long ino)
 	    inod->i_fop = &xdfs_file_operations;
 	    inod->i_mapping->a_ops = &xdfs_aops;  
 	}
-	else if (S_ISDIR(inode->i_mode)) {
+	else if (S_ISDIR(inod->i_mode)) {
 #ifdef XDFS_DEBUG
 		printk("XDFS: it is a directory\n");
 #endif
@@ -406,11 +415,54 @@ bad_inode:
 	iget_failed(inod);
 	return ERR_PTR(ret);
 } 
-void xdfs_set_inode_flags(struct inode *inode)
-{
-	unsigned int flags = XDFS_I(inode)->i_flags;
 
-	inode->i_flags &= ~(S_SYNC | S_APPEND | S_IMMUTABLE | S_NOATIME |
+static struct xdfs_inode *xdfs_get_inode(struct super_block *sb, ino_t ino,
+					struct buffer_head **p)
+{
+	struct buffer_head * bh;
+	unsigned long block_group;
+	unsigned long block;
+	unsigned long offset;
+	/* we dont have group */
+	// struct ext2_group_desc * gdp;
+
+	*p = NULL;
+	/* ino范围检查 */
+	if ((ino != XDFS_ROOT_INO && (ino < XDFS_FIRST_INO ||
+	    ino > XDFS_MAX_INO)))
+		goto Einval;
+
+	// block_group = (ino - 1) / EXT2_INODES_PER_GROUP(sb);
+	// gdp = ext2_get_group_desc(sb, block_group, NULL);
+	// if (!gdp)
+	// 	goto Egdp;
+
+	/*
+	 * Figure out the offset within the block group inode table
+	 */
+	offset = ((ino - 1)*XDFS_INODE_SIZE);
+	block = XDFS_INODE_BLOCK-1;
+	if (!(bh = sb_bread(sb, block)))
+		goto Eio;
+
+	*p = bh;
+	offset &= XDFS_BSIZE - 1;
+	return (struct xdfs_inode *) (bh->b_data + offset);
+
+Einval:
+	xdfs_printk("get_inode ino not in bound\n");
+	return ERR_PTR(-EINVAL);
+Eio:
+	xdfs_printk("get_inode sb_bread read wrong\n");
+Egdp:
+	return ERR_PTR(-EIO);
+}
+
+void xdfs_set_inode_flags(struct inode *inod)
+{
+	// unsigned int flags = XDFS_I(inod)->i_flags;
+
+	inod->i_flags &= ~(S_SYNC | S_APPEND | S_IMMUTABLE | S_NOATIME |
 				S_DIRSYNC | S_DAX);
 	// if (flags & EXT2_SYNC_FL)
 	// 	inode->i_flags |= S_SYNC;
@@ -424,8 +476,8 @@ void xdfs_set_inode_flags(struct inode *inode)
 	// 	inode->i_flags |= S_DIRSYNC;
 	// if (test_opt(inode->i_sb, DAX) && S_ISREG(inode->i_mode))
 	// 	inode->i_flags |= S_DAX;
-	if (S_ISREG(inode->i_mode))
-		inode->i_flags |= S_DAX;
+	if (S_ISREG(inod->i_mode))
+		inod->i_flags |= S_DAX;
 }
 static int 
 xdfs_sync_fs(struct super_block *sb, int wait)
@@ -955,7 +1007,7 @@ xdfs_put_page(struct page *page, void *page_addr)
 static int xdfs_fsync(struct file *file, loff_t start, loff_t end, int datasync)
 {
 	int ret;
-	struct super_block *sb = file->f_mapping->host->i_sb;
+	// struct super_block *sb = file->f_mapping->host->i_sb;
 	xdfs_printk("xdfs_fsync is called\n");
 
 	ret = generic_file_fsync(file, start, end, datasync);
