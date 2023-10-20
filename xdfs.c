@@ -76,6 +76,22 @@ typedef uint64_t UINT64;
 
 #define XDFS_MAXFILES 4096		/* The filesystem has 4096 inodes */
 
+#define PBR_BLKNO 0
+#define FSB0_BLKNO 1
+#define FSB1_BLKNO 2
+#define FIB0_BLKNO 3
+#define FIB1_BLKNO 4
+#define INODE_SET_BLKNO 5
+#define INODE_LOG_BLKNO 30
+#define FSB_MB0_BLKNO 31
+#define FSB_MB1_BLKNO 32
+#define FIB_MB0_BLKNO 33
+#define FIB_MB1_BLKNO 34
+#define GTI0_BLKNO 35
+#define GTI1_BLKNO 36
+#define DS_BLKNO 37
+#define SB_BLKNO 32767
+
 /* The next two item should be replaced by XDFS_BSIZE and XDFS_MAXBLOCKS */
 const int BLKSIZE = 4096;	/* 一个块4KB */ 
 const unsigned BLKSIZE_BITS = 21;
@@ -120,7 +136,6 @@ struct xdfs_inode
     atomic_t inode_count;					/* Inode reference count  */
 
     UINT32 addr[XDFS_DIRECT_BLOCKS];	/* Store the address */
-	struct inode vfs_inode;
 
 };
 
@@ -347,7 +362,7 @@ xdfs_iget(struct super_block *sb, unsigned long ino)
 	raw_inode_info = XDFS_I(inod);
 	
 #ifdef XDFS_DEBUG
-	printk("XDFS: iget_locked ending return false\n");
+	printk("XDFS: iget_locked ending\n");
 	msleep(1000);
 #endif
 	
