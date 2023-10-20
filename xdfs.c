@@ -151,7 +151,7 @@ struct xdfs_dir_entry{
 	UINT16 dir_entry_len; 
 	UINT8 name_len; 
 	UINT8 file_type; 
-	char name[]; 
+	char name[255]; 
 };
 
 static struct super_operations 		   xdfs_sops;
@@ -347,12 +347,17 @@ xdfs_iget(struct super_block *sb, unsigned long ino)
 	raw_inode_info = XDFS_I(inod);
 	
 #ifdef XDFS_DEBUG
-	printk("XDFS: iget_locked ending\n");
+	printk("XDFS: iget_locked ending return false\n");
 	msleep(1000);
 #endif
-
+	
 	if (!inod)
 		return ERR_PTR(-ENOMEM);
+
+#ifdef XDFS_DEBUG
+	printk("XDFS: inode->i_state            %x and I_NEW = %x",inod->i_state,I_NEW);
+#endif
+
 	if (!(inod->i_state & I_NEW))      
 		return inod;   
 
@@ -402,14 +407,14 @@ xdfs_iget(struct super_block *sb, unsigned long ino)
 	}
 	i_uid = (uid_t)le16_to_cpu(raw_inode->uid);
 	i_gid = (gid_t)le16_to_cpu(raw_inode->gid);
-	i_uid_write(inode, i_uid);
-	i_gid_write(inode, i_gid);
-    inod->i_uid.val = raw_inode->uid;
-    inod->i_gid.val = raw_inode->gid;
-	inode->i_atime.tv_sec = (signed)le32_to_cpu(raw_inode->atime);
-	inode->i_ctime.tv_sec = (signed)le32_to_cpu(raw_inode->ctime);
-	inode->i_mtime.tv_sec = (signed)le32_to_cpu(raw_inode->mtime);
-	inode->i_generation =0;
+	i_uid_write(inod, i_uid);
+	i_gid_write(inod, i_gid);
+    // inod->i_uid.val = raw_inode->uid;
+    // inod->i_gid.val = raw_inode->gid;
+	inod->i_atime.tv_sec = (signed)le32_to_cpu(raw_inode->atime);
+	inod->i_ctime.tv_sec = (signed)le32_to_cpu(raw_inode->ctime);
+	inod->i_mtime.tv_sec = (signed)le32_to_cpu(raw_inode->mtime);
+	inod->i_generation =0;
     // set_nlink(inod,raw_inode->inode_count.counter);
 	if(inod->i_nlink==0)
 	{
