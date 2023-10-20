@@ -269,10 +269,15 @@ xdfs_fill_super(struct super_block *sb, void *data, int silent)
 	msleep(1000);
 
 	/* exam the data read from the device and written by mkfs.c */
+    sb->s_magic = XDFS_MAGIC;
+	sb->s_flags = SB_NOSUID|SB_NODEV|SB_NOATIME|SB_NODIRATIME;
 	sb->s_blocksize = BLKSIZE;
 	sb->s_blocksize_bits = BLKSIZE_BITS;
+	sb->s_maxbytes = sb->s_blocksize_bits;
+	sb->s_max_links = INODE_NUMS;
+	sb->s_time_min = S32_MIN;
+	sb->s_time_max = S32_MAX;
     sb->s_fs_info = xdfs_sb;
-    sb->s_magic = XDFS_MAGIC;
 
 #ifdef XDFS_DEBUG
 	printk("XDFS: op starting\n");
