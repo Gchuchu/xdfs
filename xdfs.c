@@ -71,7 +71,7 @@ typedef uint64_t UINT64;
 #define XDFS_ROOT_INO 2			/* This value should equal the num of non-data zones */
 #define XDFS_FIRST_INO 3
 #define XDFS_MAX_INO 4096
-#define XDFS_INODE_SIZE 192
+#define XDFS_INODE_SIZE (sizeof(struct xdfs_inode))
 #define XDFS_SB_SIZE 32
 
 #define XDFS_MAXFILES 4096		/* The filesystem has 4096 inodes */
@@ -111,9 +111,9 @@ struct xdfs_inode
     unsigned long inode_no;				/* Stat data, not accessed from path walking, the unique label of the inode */
     unsigned int num_link;				/* The num of the hard link  */
     loff_t file_size;					/* The file size in bytes */
-    struct timespec64 ctime;      		/* The last time the file attributes */
-    struct timespec64 mtime;      		/* The last time the file data was changed */
-    struct timespec64 atime;      		/* The last time the file data was accessed */
+    unsigned long ctime;      		/* The last time the file attributes */
+    unsigned long mtime;      		/* The last time the file data was changed */
+    unsigned long atime;      		/* The last time the file data was accessed */
     unsigned int block_size_in_bit;				/* The size of the block in bits */
     blkcnt_t using_block_num;					/* The num of blks file using */
     unsigned long state;				/* State flag  */
@@ -333,7 +333,9 @@ xdfs_iget(struct super_block *sb, unsigned long ino)
 	struct xdfs_inode_info* raw_inode_info;
 	struct inode *inod;
 	struct buffer_head *bh;
-    struct xdfs_inode *raw_inode;                
+    struct xdfs_inode *raw_inode;    
+	uid_t i_uid;
+	gid_t i_gid;            
 	// int block;
 	long ret = -EIO;
 #ifdef XDFS_DEBUG
@@ -398,8 +400,16 @@ xdfs_iget(struct super_block *sb, unsigned long ino)
 		printk("XDFS: what type is this file ? inod->mod is\n");
 #endif
 	}
+	i_uid = (uid_t)le16_to_cpu(raw_inode->uid);
+	i_gid = (gid_t)le16_to_cpu(raw_inode->gid);
+	i_uid_write(inode, i_uid);
+	i_gid_write(inode, i_gid);
     inod->i_uid.val = raw_inode->uid;
     inod->i_gid.val = raw_inode->gid;
+	inode->i_atime.tv_sec = (signed)le32_to_cpu(raw_inode->atime);
+	inode->i_ctime.tv_sec = (signed)le32_to_cpu(raw_inode->ctime);
+	inode->i_mtime.tv_sec = (signed)le32_to_cpu(raw_inode->mtime);
+	inode->i_generation =0;
     // set_nlink(inod,raw_inode->inode_count.counter);
 	if(inod->i_nlink==0)
 	{

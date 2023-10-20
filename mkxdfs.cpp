@@ -28,7 +28,38 @@ typedef uint64_t UINT64;
 #define ERROR 1
 #define OK 0
 
+#define PBR_BLKNO 0
+#define FSB0_BLKNO 1
+#define FSB1_BLKNO 2
+#define FIB0_BLKNO 3
+#define FIB1_BLKNO 4
+#define INODE_SET_BLKNO 5
+#define INODE_LOG_BLKNO 30
+#define FSB_MB0_BLKNO 31
+#define FSB_MB1_BLKNO 32
+#define FIB_MB0_BLKNO 33
+#define FIB_MB1_BLKNO 34
+#define GTI0_BLKNO 35
+#define GTI1_BLKNO 36
+#define DS_BLKNO 37
+#define SB_BLKNO 32767
 
+#define XDFS_INODE_SIZE (sizeof(struct xdfs_inode))
+
+#define DT_REG  0
+#define DT_DIR  1
+#define DT_LNK  2
+#define DT_CHR  3
+#define DT_BLK  4
+#define DT_FIFO	5
+#define DT_SOCK	6
+#define FT_REG_FILE	0
+#define FT_DIR		1
+#define FT_SYMLINK	2
+#define FT_CHRDEV	3
+#define FT_BLKDEV	4
+#define FT_FIFO		5
+#define FT_SOCK		6
 #define XDFS_BYTE_ORDER LITTLE_BYTE_ORDER	/* 默认小端字节序 */ 
 
 const int BLKSIZE = 4096;	/* 一个块4KB */ 
@@ -75,10 +106,7 @@ typedef struct {
 	int counter;
 } atomic_t;
 
-struct timespec64 {
-	long long	tv_sec;			/* seconds */
-	long		tv_nsec;		/* nanoseconds */
-};
+
 struct xdfs_inode
 {
     umode_t mode;						/* IS directory?  */
@@ -88,9 +116,9 @@ struct xdfs_inode
     unsigned long inode_no;				/* Stat data, not accessed from path walking, the unique label of the inode */
     unsigned int num_link;				/* The num of the hard link  */
     loff_t file_size;					/* The file size in bytes */
-    struct timespec64 ctime;      		/* The last time the file attributes */
-    struct timespec64 mtime;      		/* The last time the file data was changed */
-    struct timespec64 atime;      		/* The last time the file data was accessed */
+    unsigned long ctime;      		/* The last time the file attributes */
+    unsigned long mtime;      		/* The last time the file data was changed */
+    unsigned long atime;      		/* The last time the file data was accessed */
     unsigned int block_size_in_bit;				/* The size of the block in bits */
     blkcnt_t using_block_num;					/* The num of blks file using */
     unsigned long state;				/* State flag  */
@@ -99,6 +127,13 @@ struct xdfs_inode
     UINT32 addr[XDFS_DIRECT_BLOCKS];	/* Store the address */
 };
 
+struct xdfs_dir_entry{
+	UINT32 inode_no;
+	UINT16 dir_entry_len; 
+	UINT8 name_len; 
+	UINT8 file_type; 
+	char name[]; 
+};
 
 /*************************INODE_LOG_DEFINE*****************/
 
@@ -167,7 +202,7 @@ int main(int argc, char *argv[])
 
 printf("PBR START\n");
 
-	lseek(devfd, 0, SEEK_SET);
+	lseek(devfd, PBR_BLKNO*BLKSIZE, SEEK_SET);
 	char *p_pbr;
 	p_pbr = (char *)malloc(BLKSIZE * PBR_NBLKS);
 	if (p_pbr == NULL)
@@ -206,7 +241,7 @@ printf("PBR END\n");
 	
 printf("FSB0 START\n");
 	
-	lseek(devfd, BLKSIZE * PBR_NBLKS, SEEK_SET);
+	lseek(devfd, FSB0_BLKNO*BLKSIZE, SEEK_SET);
 	char *p_fsb0;
 	p_fsb0 = (char *)malloc(BLKSIZE * FSB_NBLKS);
 	if (p_fsb0 == NULL)
@@ -265,7 +300,7 @@ printf("FSB0 END\n");
 
 printf("FIB0 START\n");	
 
-	lseek(devfd, BLKSIZE * PBR_NBLKS + BLKSIZE * FSB_NBLKS, SEEK_SET);
+	lseek(devfd, FSB1_BLKNO*BLKSIZE, SEEK_SET);
 	char *p_fib0;
 	p_fib0 = (char *)malloc(BLKSIZE * FIB_NBLKS);
 	if (p_fib0 == NULL)
@@ -286,7 +321,7 @@ printf("FIB0 END\n");
 
 printf("FSB1 START\n");
 	
-	lseek(devfd, BLKSIZE * PBR_NBLKS + BLKSIZE * FSB_NBLKS + BLKSIZE * FIB_NBLKS, SEEK_SET);
+	lseek(devfd, FIB0_BLKNO*BLKSIZE, SEEK_SET);
 	char *p_fsb1;
 	p_fsb1 = (char *)malloc(BLKSIZE * FSB_NBLKS);
 	if (p_fsb1 == NULL)
@@ -342,7 +377,7 @@ printf("FSB1 END\n");
 
 printf("FIB1 START\n");
 	
-	lseek(devfd, BLKSIZE * PBR_NBLKS + BLKSIZE * FSB_NBLKS * 2 + BLKSIZE * FIB_NBLKS, SEEK_SET);
+	lseek(devfd, FIB1_BLKNO, SEEK_SET);
 	char *p_fib1;
 	p_fib1 = (char *)malloc(BLKSIZE * FIB_NBLKS);
 	if (p_fib1 == NULL)
@@ -363,7 +398,7 @@ printf("FIB1 END\n");
 	
 printf("INODE_SET START\n");
 	
-	lseek(devfd, BLKSIZE * PBR_NBLKS + BLKSIZE * FSB_NBLKS * 2 + BLKSIZE * FIB_NBLKS * 2, SEEK_SET);
+	lseek(devfd, INODE_SET_BLKNO*BLKSIZE, SEEK_SET);
 	char *p_inode_set;
 	p_inode_set = (char *)malloc(1 * sizeof(struct xdfs_inode));
 	if (p_inode_set == NULL)
@@ -372,17 +407,34 @@ printf("INODE_SET START\n");
 
 printf("part 1 is OK\n");
 
-	for(int i = 0; i < INODE_NUMS; i++)
+	int inode_num = BLKSIZE/XDFS_INODE_SIZE;
+	int blknum = INODE_NUMS/inode_num+1;//25 when size = 168
+	int yu = (XDFS_INODE_SIZE*INODE_NUMS)%BLKSIZE;
+	for(int i=0;i<blknum-1;i++)
 	{
-		if(i==2)
+		lseek(devfd, (INODE_SET_BLKNO+i)*BLKSIZE, SEEK_SET);
+		for(int j=0;j<inode_num;j++)
 		{
-			struct xdfs_inode* root_inode = (struct xdfs_inode*)p_inode_set;
-			root_inode->mode |= S_IFDIR;
-			root_inode->inode_no = XDFS_ROOT_INO;
+			if(i==0&&j==2)
+			{
+				struct xdfs_inode* root_inode = (struct xdfs_inode*)p_inode_set;
+				root_inode->mode |= S_IFDIR;
+				root_inode->inode_no = XDFS_ROOT_INO;
+				root_inode->num_link = 1;
+				root_inode->uid = 0;
+				root_inode->gid = 0;
+				root_inode->using_block_num = 1;
+				root_inode->addr[0] = DS_BLKNO;
+				write(devfd, p_inode_set, 1 * sizeof(struct xdfs_inode));
+				memset(p_inode_set, 0x0, 1 * sizeof(struct xdfs_inode));
+				continue;
+			}
 			write(devfd, p_inode_set, 1 * sizeof(struct xdfs_inode));
-			memset(p_inode_set, 0x0, 1 * sizeof(struct xdfs_inode));
-			continue;
 		}
+	}
+	lseek(devfd, (INODE_SET_BLKNO+blknum-1)*BLKSIZE, SEEK_SET);
+	for(int i=0;i<yu;i++)
+	{
 		write(devfd, p_inode_set, 1 * sizeof(struct xdfs_inode));
 	}
 	
@@ -399,8 +451,7 @@ printf("INODE_SET END\n");
 
 printf("INODE_LOG START\n");
 
-	lseek(devfd, BLKSIZE * PBR_NBLKS + BLKSIZE * FSB_NBLKS * 2 + BLKSIZE * FIB_NBLKS * 2 \
-+ BLKSIZE * INODE_SET_NBLKS, SEEK_SET);
+	lseek(devfd, INODE_LOG_BLKNO, SEEK_SET);
 	char *p_inode_log;
 	p_inode_log = (char *)malloc(BLKSIZE * INODE_LOG_NBLKS);
 	if (p_inode_log == NULL)
@@ -421,8 +472,7 @@ printf("INODE_LOG END\n");
 
 printf("FSB_METABITMAP0 START\n");
 
-	lseek(devfd, BLKSIZE * PBR_NBLKS + BLKSIZE * FSB_NBLKS * 2 + BLKSIZE * FIB_NBLKS * 2 \
-+ BLKSIZE * INODE_SET_NBLKS + BLKSIZE * INODE_LOG_NBLKS, SEEK_SET);
+	lseek(devfd, FSB_MB0_BLKNO*BLKSIZE, SEEK_SET);
 	char *p_fsb_metabitmap0;
 	p_fsb_metabitmap0 = (char *)malloc(BLKSIZE * METABITMAP_NBLKS);
 	if (p_fsb_metabitmap0 == NULL)
@@ -440,8 +490,7 @@ printf("FSB_METABITMAP0 END\n");
 
 printf("FSB_METABITMAP1 START\n");
 
-	lseek(devfd, BLKSIZE * PBR_NBLKS + BLKSIZE * FSB_NBLKS * 2 + BLKSIZE * FIB_NBLKS * 2 \
-+ BLKSIZE * INODE_SET_NBLKS + BLKSIZE * INODE_LOG_NBLKS + BLKSIZE * METABITMAP_NBLKS, SEEK_SET);
+	lseek(devfd, FSB_MB1_BLKNO*BLKSIZE, SEEK_SET);
 	char *p_fsb_metabitmap1;
 	p_fsb_metabitmap1 = (char *)malloc(BLKSIZE * METABITMAP_NBLKS);
 	if (p_fsb_metabitmap1 == NULL)
@@ -459,8 +508,7 @@ printf("FSB_METABITMAP1 END\n");
 
 printf("FIB_METABITMAP0 START\n");
 
-	lseek(devfd, BLKSIZE * PBR_NBLKS + BLKSIZE * FSB_NBLKS * 2 + BLKSIZE * FIB_NBLKS * 2 \
-+ BLKSIZE * INODE_SET_NBLKS + BLKSIZE * INODE_LOG_NBLKS + BLKSIZE * METABITMAP_NBLKS * 2, SEEK_SET);
+	lseek(devfd, FIB_MB0_BLKNO*BLKSIZE, SEEK_SET);
 	char *p_fib_metabitmap0;
 	p_fib_metabitmap0 = (char *)malloc(BLKSIZE * METABITMAP_NBLKS);
 	if (p_fib_metabitmap0 == NULL)
@@ -478,8 +526,7 @@ printf("FIB_METABITMAP0 END\n");
 
 printf("FIB_METABITMAP1 START\n");
 
-	lseek(devfd, BLKSIZE * PBR_NBLKS + BLKSIZE * FSB_NBLKS * 2 + BLKSIZE * FIB_NBLKS * 2 \
-+ BLKSIZE * INODE_SET_NBLKS + BLKSIZE * INODE_LOG_NBLKS + BLKSIZE * METABITMAP_NBLKS * 3, SEEK_SET);
+	lseek(devfd, FIB_MB1_BLKNO*BLKSIZE, SEEK_SET);
 	char *p_fib_metabitmap1;
 	p_fib_metabitmap1 = (char *)malloc(BLKSIZE * METABITMAP_NBLKS);
 	if (p_fib_metabitmap1 == NULL)
@@ -497,8 +544,7 @@ printf("FIB_METABITMAP0 END\n");
 
 printf("GLOBAL_INFO0 START\n");
 
-	lseek(devfd, BLKSIZE * PBR_NBLKS + BLKSIZE * FSB_NBLKS * 2 + BLKSIZE * FIB_NBLKS * 2 \
-+ BLKSIZE * INODE_SET_NBLKS + BLKSIZE * INODE_LOG_NBLKS + BLKSIZE * METABITMAP_NBLKS * 4, SEEK_SET);
+	lseek(devfd, GTI0_BLKNO*BLKSIZE, SEEK_SET);
 	char *p_global_info0;
 	p_global_info0 = (char *)malloc(BLKSIZE * GLOBAL_INFO_NBLKS);
 	if (p_global_info0 == NULL)
@@ -516,8 +562,7 @@ printf("GLOBAL_INFO0 END\n");
 
 printf("GLOBAL_INFO1 START\n");
 
-	lseek(devfd, BLKSIZE * PBR_NBLKS + BLKSIZE * FSB_NBLKS * 2 + BLKSIZE * FIB_NBLKS * 2 \
-+ BLKSIZE * INODE_SET_NBLKS + BLKSIZE * INODE_LOG_NBLKS + BLKSIZE * METABITMAP_NBLKS * 4 + BLKSIZE * GLOBAL_INFO_NBLKS, SEEK_SET);
+	lseek(devfd, GTI1_BLKNO*BLKSIZE, SEEK_SET);
 	char *p_global_info1;
 	p_global_info1 = (char *)malloc(BLKSIZE * GLOBAL_INFO_NBLKS);
 	if (p_global_info1 == NULL)
@@ -531,6 +576,30 @@ printf("GLOBAL_INFO1 END\n");
 /*************************GLOBAL_INFO1_END*************************/
 
 
+/*************************DATA_SPACE_START*************************/
+printf("GLOBAL_INFO0 START\n");
+
+	lseek(devfd, DS_BLKNO*BLKSIZE, SEEK_SET);
+	struct xdfs_dir_entry* de;
+	const char *str = "what";
+	int name_len = strlen(str);
+	de = (char *)malloc(sizeof(struct xdfs_dir_entry));
+	de->file_type = FT_DIR;
+	de->name = str;
+	de->inode_no = XDFS_ROOT_INO;
+	de->name_len = name_len;
+	de->dir_entry_len = sizeof(de);
+	if (de == NULL)
+    	return (ERROR);
+	memset(de, 0x00, sizeof(struct xdfs_dir_entry));	/*缓冲区置0x00*/
+	write(devfd, de, sizeof(struct xdfs_dir_entry));
+	free(de);
+
+printf("GLOBAL_INFO0 END\n");
+/*************************DATA_SPACE_END*************************/
+
+
+
 /*************************SUPERBLOCK_START*************************/
 
 printf("SUPERBLOCK START\n");
@@ -542,7 +611,7 @@ printf("SUPERBLOCK START\n");
 	int byteShift;
 	byteShift = 12; /*4096是2的12次方*/
 	UINT32 freeSpaceBlks;
-	freeSpaceBlks = 32636;	/* 一共有132块被占用，文件系统一共有32768块，剩下32636块空闲 */ 
+	freeSpaceBlks = 32731;	/* 一共有37块被占用，文件系统一共有32768块，剩下32731块空闲 */ 
 	struct xdfs_superblock *p_superblock;   /* in-core copy of super block */
     //HRFS_DISK_SUPER_BLOCK   *pdisksuperBlk; /* on-disk copy of super block */
 	
@@ -574,8 +643,8 @@ printf("part 1 is OK\n");
 	p_superblock->s_block = 32768-4096-8;
     p_superblock->s_inode = 4096;
     p_superblock->s_magic = 12;
-    p_superblock->s_nbfree = 32768-4096-8;
-    p_superblock->s_nifree = 4096;
+    p_superblock->s_nbfree = (SB_BLKNO-DS_BLKNO+1);
+    p_superblock->s_nifree = 4095;
     
 printf("part 2 is OK\n");
     
