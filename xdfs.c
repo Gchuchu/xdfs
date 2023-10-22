@@ -261,7 +261,6 @@ xdfs_fill_super(struct super_block *sb, void *data, int silent)
 
 	struct buffer_head *bh;
 	struct xdfs_superblock *xdfs_sb;
-	unsigned long sb_block = get_sb_block(&data);
 	struct inode *inode_rt;
 	dev_t  dev; 
 	struct block_device * bdev;
@@ -304,7 +303,7 @@ xdfs_fill_super(struct super_block *sb, void *data, int silent)
 
 	/* exam the data read from the device and written by mkfs.c */
     sb->s_magic = XDFS_MAGIC;
-	sb->s_flags = SB_NOSUID|SB_NODEV|SB_NOATIME|SB_NODIRATIME;
+	sb->s_flags = SB_NOSUID|SB_NOATIME;
 	sb->s_blocksize = BLKSIZE;
 	sb->s_blocksize_bits = BLKSIZE_BITS;
 	sb->s_maxbytes = sb->s_blocksize_bits;
@@ -314,7 +313,7 @@ xdfs_fill_super(struct super_block *sb, void *data, int silent)
     sb->s_fs_info = xdfs_sb;
 	
 	sb->s_flags |= SB_POSIXACL;
-	sb->s_iflags |= SB_I_CGROUPWB;
+	// sb->s_iflags |= SB_I_CGROUPWB;
 
 #ifdef XDFS_DEBUG
 	printk("XDFS: op starting\n");
@@ -417,6 +416,10 @@ xdfs_iget(struct super_block *sb, unsigned long ino)
 #endif
 	
 	inod->i_mode = raw_inode->mode;
+	if(ino==2)
+	{
+		inod->i_mode |= S_IFDIR;
+	}
 	raw_inode_info->i_flags = le32_to_cpu(raw_inode->flags);
 	xdfs_set_inode_flags(inod);
 	if(S_ISREG(inod->i_mode))
@@ -424,7 +427,6 @@ xdfs_iget(struct super_block *sb, unsigned long ino)
 #ifdef XDFS_DEBUG
 		printk("XDFS: it is a common file\n");
 #endif
-	    inod->i_mode |= S_IFREG;
 	    inod->i_op = &xdfs_inode_operations;
 	    inod->i_fop = &xdfs_file_operations;
 	    inod->i_mapping->a_ops = &xdfs_aops;  
@@ -433,7 +435,6 @@ xdfs_iget(struct super_block *sb, unsigned long ino)
 #ifdef XDFS_DEBUG
 		printk("XDFS: it is a directory\n");
 #endif
-		inod->i_mode |= S_IFDIR;
 		inod->i_op = &xdfs_inode_dir_operations;
 		inod->i_fop = &xdfs_file_dir_operations;
 	    inod->i_mapping->a_ops = &xdfs_aops;  

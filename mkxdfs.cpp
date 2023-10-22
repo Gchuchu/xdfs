@@ -421,7 +421,6 @@ printf("part 1 is OK\n");
 			if(i==0&&j==2)
 			{
 				struct xdfs_inode* root_inode = (struct xdfs_inode*)p_inode_set;
-				root_inode->mode |= S_IFDIR | S_DAX | S_NOATIME;
 				root_inode->num_link = 1;
 				root_inode->uid = 0;
 				root_inode->gid = 0;
