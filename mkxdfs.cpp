@@ -577,25 +577,30 @@ printf("GLOBAL_INFO1 END\n");
 
 
 /*************************DATA_SPACE_START*************************/
-// printf("DATA_SPACE START\n");
+printf("DATA_SPACE START\n");
 
-// 	lseek(devfd, DS_BLKNO*BLKSIZE, SEEK_SET);
-// 	struct xdfs_dir_entry* de;
-// 	const char *str = "what";
-// 	int name_len = strlen(str);
-// 	de = (struct xdfs_dir_entry *)malloc(sizeof(struct xdfs_dir_entry));
-// 	de->file_type = FT_DIR;
-// 	strcpy(de->name,str);
-// 	de->inode_no = XDFS_ROOT_INO;
-// 	de->name_len = name_len;
-// 	de->dir_entry_len = sizeof(de);
-// 	if (de == NULL)
-//     	return (ERROR);
-// 	memset(de, 0x00, sizeof(struct xdfs_dir_entry));	/*缓冲区置0x00*/
-// 	write(devfd, de, sizeof(struct xdfs_dir_entry));
-// 	free(de);
+	lseek(devfd, DS_BLKNO*BLKSIZE, SEEK_SET);
+	char *a = (char*)malloc((SB_BLKNO-DS_BLKNO)*BLKSIZE);
+	memset(a,0,(SB_BLKNO-DS_BLKNO)*BLKSIZE);
+	write(devfd, a, (SB_BLKNO-DS_BLKNO)*BLKSIZE);
+	free(a);
 
-// printf("DATA_SPACE END\n");
+	// struct xdfs_dir_entry* de;
+	// const char *str = "what";
+	// int name_len = strlen(str);
+	// de = (struct xdfs_dir_entry *)malloc(sizeof(struct xdfs_dir_entry));
+	// de->file_type = FT_DIR;
+	// strcpy(de->name,str);
+	// de->inode_no = XDFS_ROOT_INO;
+	// de->name_len = name_len;
+	// de->dir_entry_len = sizeof(de);
+	// if (de == NULL)
+    // 	return (ERROR);
+	// memset(de, 0x00, sizeof(struct xdfs_dir_entry));	/*缓冲区置0x00*/
+	// write(devfd, de, sizeof(struct xdfs_dir_entry));
+	// free(de);
+
+printf("DATA_SPACE END\n");
 /*************************DATA_SPACE_END*************************/
 
 

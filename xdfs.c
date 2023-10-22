@@ -414,6 +414,7 @@ xdfs_iget(struct super_block *sb, unsigned long ino)
 		inod->i_mode |= S_IFDIR;
 		inod->i_op = &xdfs_inode_dir_operations;
 		inod->i_fop = &xdfs_file_dir_operations;
+	    inod->i_mapping->a_ops = &xdfs_aops;  
 	} else 
 	{
 #ifdef XDFS_DEBUG
@@ -775,6 +776,9 @@ static struct inode_operations xdfs_inode_operations = {
     //link : my_link,
     //unlink : my_unlink,
 };
+
+
+
 static struct file_operations xdfs_file_operations = {
 	open : xdfs_open,
 	read_iter : xdfs_read_iter,
@@ -1074,9 +1078,9 @@ static struct inode_operations xdfs_inode_dir_operations = {
 	// .rmdir		    = xdfs_dir_rmdir,
 	// .mknod		    = xdfs_dir_mknod,
 	// .rename		    = xdfs_dir_rename,
-	// .listxattr	    = xdfs_dir_listxattr,
-	// .getattr	    = xdfs_dir_getattr,
-	// .setattr	    = xdfs_dir_setattr,
+	.listxattr	    = xdfs_dir_listxattr,
+	.getattr	    = xdfs_dir_getattr,
+	.setattr	    = xdfs_dir_setattr,
 	// .get_inode_acl	= xdfs_dir_get_acl,
 	// .set_acl	    = xdfs_dir_set_acl,
 	// .tmpfile	    = xdfs_dir_tmpfile,
@@ -1097,9 +1101,172 @@ xdfs_dir_create (struct user_namespace * mnt_userns,
 	xdfs_printk("dir_create return\n");
 	return 0;
 }
+
+static int
+xdfs_xattr_list(struct dentry *dentry, char *buffer, size_t buffer_size)
+{
+	struct inode *inode = dentry->d_inode;
+	struct buffer_head *bh = NULL;
+	struct ext2_xattr_entry *entry;
+	char *end;
+	size_t rest = buffer_size;
+	int error;
+
+	xdfs_printk("xdfs_xattr_list is called\n");
+
+// 	down_read(&EXT2_I(inode)->xattr_sem);
+// 	error = 0;
+// 	if (!EXT2_I(inode)->i_file_acl)
+// 		goto cleanup;
+// 	ea_idebug(inode, "reading block %d", EXT2_I(inode)->i_file_acl);
+// 	bh = sb_bread(inode->i_sb, EXT2_I(inode)->i_file_acl);
+// 	error = -EIO;
+// 	if (!bh)
+// 		goto cleanup;
+// 	ea_bdebug(bh, "b_count=%d, refcount=%d",
+// 		atomic_read(&(bh->b_count)), le32_to_cpu(HDR(bh)->h_refcount));
+// 	end = bh->b_data + bh->b_size;
+// 	if (HDR(bh)->h_magic != cpu_to_le32(EXT2_XATTR_MAGIC) ||
+// 	    HDR(bh)->h_blocks != cpu_to_le32(1)) {
+// bad_block:	ext2_error(inode->i_sb, "ext2_xattr_list",
+// 			"inode %ld: bad block %d", inode->i_ino,
+// 			EXT2_I(inode)->i_file_acl);
+// 		error = -EIO;
+// 		goto cleanup;
+// 	}
+
+// 	/* check the on-disk data structure */
+// 	entry = FIRST_ENTRY(bh);
+// 	while (!IS_LAST_ENTRY(entry)) {
+// 		struct ext2_xattr_entry *next = EXT2_XATTR_NEXT(entry);
+
+// 		if ((char *)next >= end)
+// 			goto bad_block;
+// 		entry = next;
+// 	}
+// 	if (ext2_xattr_cache_insert(bh))
+// 		ea_idebug(inode, "cache insert failed");
+
+// 	/* list the attribute names */
+// 	for (entry = FIRST_ENTRY(bh); !IS_LAST_ENTRY(entry);
+// 	     entry = EXT2_XATTR_NEXT(entry)) {
+// 		const struct xattr_handler *handler =
+// 			ext2_xattr_handler(entry->e_name_index);
+
+// 		if (handler) {
+// 			size_t size = handler->list(dentry, buffer, rest,
+// 						    entry->e_name,
+// 						    entry->e_name_len,
+// 						    handler->flags);
+// 			if (buffer) {
+// 				if (size > rest) {
+// 					error = -ERANGE;
+// 					goto cleanup;
+// 				}
+// 				buffer += size;
+// 			}
+// 			rest -= size;
+// 		}
+// 	}
+// 	error = buffer_size - rest;  /* total size */
+
+	xdfs_printk("xdfs_xattr_list return\n");
+
+cleanup:
+	brelse(bh);
+	up_read(&EXT2_I(inode)->xattr_sem);
+
+	xdfs_printk("xdfs_xattr_list return error !!!\n");
+	
+	return error;
+}
+
+
+
+int 
+xdfs_dir_getattr(struct user_namespace *mnt_userns, const struct path *path,
+		 struct kstat *stat, u32 request_mask, unsigned int query_flags)
+{
+
+	struct inode *inode = d_inode(path->dentry);
+	xdfs_printk("get_dir_attr is called\n");
+	
+	generic_fillattr(&init_user_ns, inode, stat);
+	xdfs_printk("get_dir_attr return\n");
+	return 0;
+}
+int 
+xdfs_setattr(struct user_namespace *mnt_userns, struct dentry *dentry,
+		 struct iattr *iattr)
+{
+	struct inode *inode = d_inode(dentry);
+	int error;
+
+	xdfs_printk("xdfs_dir_setattr is called\n");
+
+	error = setattr_prepare(&init_user_ns, dentry, iattr);
+	if (error)
+	{
+		return error;
+	}
+	
+	if (iattr->ia_valid & ATTR_SIZE && iattr->ia_size != inode->i_size) {
+		error = xdfs_setsize(inode, iattr->ia_size);
+		if (error)
+			return error;
+	}
+	setattr_copy(&init_user_ns, inode, iattr);
+	if (iattr->ia_valid & ATTR_MODE)
+		error = posix_acl_chmod(&init_user_ns, dentry, inode->i_mode);
+	mark_inode_dirty(inode);
+	
+	xdfs_printk("xdfs_dir_setattr return\n");
+	return error;
+}
+
+static int
+xdfs_setsize(struct inode *inode, loff_t newsize)
+{
+	int error;
+	xdfs_printk("xdfs_setize is called\n");
+
+	if (!(S_ISREG(inode->i_mode) || S_ISDIR(inode->i_mode) ||
+	    S_ISLNK(inode->i_mode)))
+		return -EINVAL;
+	// if (ext2_inode_is_fast_symlink(inode))
+	// 	return -EINVAL;
+	if (IS_APPEND(inode) || IS_IMMUTABLE(inode))
+		return -EPERM;
+
+	inode_dio_wait(inode);
+
+	error = block_truncate_page(inode->i_mapping,
+			newsize, ext2_get_block);
+	if (error)
+		return error;
+
+	filemap_invalidate_lock(inode->i_mapping);
+	truncate_setsize(inode, newsize);
+	// __ext2_truncate_blocks(inode, newsize);
+	filemap_invalidate_unlock(inode->i_mapping);
+
+	inode->i_mtime = inode->i_ctime = current_time(inode);
+	if (inode_needs_sync(inode)) {
+		sync_mapping_buffers(inode->i_mapping);
+		sync_inode_metadata(inode, 1);
+	} else {
+		mark_inode_dirty(inode);
+	}
+	xdfs_printk("xdfs_setize return\n");
+	return 0;
+}
+
 static inline struct xdfs_inode_info *XDFS_I(struct inode *inode)
 {
 	return container_of(inode, struct xdfs_inode_info, vfs_inode);
 }
+
+
+
 module_init(init_xdfs_fs)
 module_exit(exit_xdfs_fs)
