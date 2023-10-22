@@ -11,6 +11,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <linux/fs.h>
 typedef int8_t INT8;
 typedef int16_t INT16;
 typedef int32_t INT32;
@@ -420,14 +421,14 @@ printf("part 1 is OK\n");
 			if(i==0&&j==2)
 			{
 				struct xdfs_inode* root_inode = (struct xdfs_inode*)p_inode_set;
-				root_inode->mode |= S_IFDIR;
-				root_inode->inode_no = XDFS_ROOT_INO;
+				root_inode->mode |= S_IFDIR | S_DAX | S_NOATIME;
 				root_inode->num_link = 1;
 				root_inode->uid = 0;
 				root_inode->gid = 0;
 				root_inode->using_block_num = 1;
 				root_inode->addr[0] = DS_BLKNO;
 				root_inode->file_size = sizeof(struct xdfs_dir_entry);
+				root_inode->blockno = INODE_SET_BLKNO;
 				write(devfd, p_inode_set, 1 * sizeof(struct xdfs_inode));
 				memset(p_inode_set, 0x0, 1 * sizeof(struct xdfs_inode));
 				continue;

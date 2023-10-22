@@ -261,6 +261,7 @@ xdfs_fill_super(struct super_block *sb, void *data, int silent)
 
 	struct buffer_head *bh;
 	struct xdfs_superblock *xdfs_sb;
+	unsigned long sb_block = get_sb_block(&data);
 	struct inode *inode_rt;
 	dev_t  dev; 
 	struct block_device * bdev;
@@ -311,6 +312,9 @@ xdfs_fill_super(struct super_block *sb, void *data, int silent)
 	sb->s_time_min = S32_MIN;
 	sb->s_time_max = S32_MAX;
     sb->s_fs_info = xdfs_sb;
+	
+	sb->s_flags |= SB_POSIXACL;
+	sb->s_iflags |= SB_I_CGROUPWB;
 
 #ifdef XDFS_DEBUG
 	printk("XDFS: op starting\n");
@@ -436,7 +440,7 @@ xdfs_iget(struct super_block *sb, unsigned long ino)
 	} else 
 	{
 #ifdef XDFS_DEBUG
-		printk("XDFS: what type is this file ? inod->mod is\n");
+		printk("XDFS: what type is this file ? inod->mod is %x\n",inod->i_mode);
 #endif
 	}
 	i_uid = (uid_t)le16_to_cpu(raw_inode->uid);
@@ -452,7 +456,7 @@ xdfs_iget(struct super_block *sb, unsigned long ino)
 	inod->i_ctime.tv_sec = (signed)le32_to_cpu(raw_inode->ctime);
 	inod->i_mtime.tv_sec = (signed)le32_to_cpu(raw_inode->mtime);
 	inod->i_generation = 1;
-	inode->i_blocks = raw_inode->blockno;
+	inod->i_blocks = raw_inode->blockno;
     // set_nlink(inod,raw_inode->inode_count.counter);
 	if(inod->i_nlink==0)
 	{
@@ -889,20 +893,6 @@ xdfs_getattr(struct user_namespace *mnt_userns, const struct path *path,
 	struct inode *inode = d_inode(path->dentry);
 	xdfs_printk("xdfs_getattr is called\n");
 
-
-	printk("%x stat->dev = inode->i_sb->s_dev",stat->dev);
-	printk("%x stat->ino = inode->i_ino",stat->ino);
-	printk("%x stat->mode = inode->i_mode",stat->mode);
-	printk("%x stat->nlink = inode->i_nlink",stat->nlink);
-	printk("%x stat->uid = vfsuid_into_kuid(vfsuid)",stat->uid);
-	printk("%x stat->gid = vfsgid_into_kgid(vfsgid)",stat->gid);
-	printk("%x stat->rdev = inode->i_rdev",stat->rdev);
-	printk("%x stat->size = i_size_read(inode)",stat->size);
-	printk("%x stat->atime = inode->i_atime",stat->atime);
-	printk("%x stat->mtime = inode->i_mtime",stat->mtime);
-	printk("%x stat->ctime = inode->i_ctime",stat->ctime);
-	printk("%x stat->blksize = i_blocksize(inode)",stat->blksize);
-	printk("%x stat->blocks = inode->i_blocks",stat->blocks);
 
 	stat->attributes_mask |= (STATX_ATTR_APPEND |
 			STATX_ATTR_COMPRESSED |
@@ -1365,21 +1355,6 @@ xdfs_dir_getattr(struct user_namespace *mnt_userns, const struct path *path,
 
 	struct inode *inode = d_inode(path->dentry);
 	xdfs_printk("xdfs_dir_getattr is called\n");
-
-
-	printk("%x stat->dev = inode->i_sb->s_dev",stat->dev);
-	printk("%x stat->ino = inode->i_ino",stat->ino);
-	printk("%x stat->mode = inode->i_mode",stat->mode);
-	printk("%x stat->nlink = inode->i_nlink",stat->nlink);
-	printk("%x stat->uid = vfsuid_into_kuid(vfsuid)",stat->uid);
-	printk("%x stat->gid = vfsgid_into_kgid(vfsgid)",stat->gid);
-	printk("%x stat->rdev = inode->i_rdev",stat->rdev);
-	printk("%x stat->size = i_size_read(inode)",stat->size);
-	printk("%x stat->atime = inode->i_atime",stat->atime);
-	printk("%x stat->mtime = inode->i_mtime",stat->mtime);
-	printk("%x stat->ctime = inode->i_ctime",stat->ctime);
-	printk("%x stat->blksize = i_blocksize(inode)",stat->blksize);
-	printk("%x stat->blocks = inode->i_blocks",stat->blocks);
 
 	stat->attributes_mask |= (STATX_ATTR_APPEND |
 			STATX_ATTR_COMPRESSED |
