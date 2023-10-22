@@ -220,6 +220,17 @@ static struct xdfs_dir_entry * xdfs_next_dir_entry(struct xdfs_dir_entry* de);
 static int xdfs_dir_create (struct user_namespace * mnt_userns,
 			struct inode * dir, struct dentry * dentry,
 			umode_t mode, bool excl);
+			
+static int xdfs_dir_listxattr(struct dentry *dentry, char *buffer, size_t buffer_size);
+int xdfs_dir_getattr(struct user_namespace *mnt_userns, const struct path *path,
+		 struct kstat *stat, u32 request_mask, unsigned int query_flags);
+
+int xdfs_dir_setattr(struct user_namespace *mnt_userns, struct dentry *dentry,
+		 struct iattr *iattr);
+
+
+static int xdfs_setsize(struct inode *inode, loff_t newsize);
+
 static inline struct xdfs_inode_info *XDFS_I(struct inode *inode);
 
 static void xdfs_kill_block_super(struct super_block *sb);
@@ -1103,11 +1114,10 @@ xdfs_dir_create (struct user_namespace * mnt_userns,
 }
 
 static int
-xdfs_xattr_list(struct dentry *dentry, char *buffer, size_t buffer_size)
+xdfs_dir_listxattr(struct dentry *dentry, char *buffer, size_t buffer_size)
 {
 	struct inode *inode = dentry->d_inode;
 	struct buffer_head *bh = NULL;
-	struct ext2_xattr_entry *entry;
 	char *end;
 	size_t rest = buffer_size;
 	int error;
@@ -1170,13 +1180,13 @@ xdfs_xattr_list(struct dentry *dentry, char *buffer, size_t buffer_size)
 // 	}
 // 	error = buffer_size - rest;  /* total size */
 
-	xdfs_printk("xdfs_xattr_list return\n");
+	xdfs_printk("xdfs_dir_listxattr return\n");
 
 cleanup:
 	brelse(bh);
-	up_read(&EXT2_I(inode)->xattr_sem);
+	up_read(&XDFS_I(inode)->xattr_sem);
 
-	xdfs_printk("xdfs_xattr_list return error !!!\n");
+	xdfs_printk("xdfs_dir_listxattr return error !!!\n");
 	
 	return error;
 }
@@ -1196,7 +1206,7 @@ xdfs_dir_getattr(struct user_namespace *mnt_userns, const struct path *path,
 	return 0;
 }
 int 
-xdfs_setattr(struct user_namespace *mnt_userns, struct dentry *dentry,
+xdfs_dir_setattr(struct user_namespace *mnt_userns, struct dentry *dentry,
 		 struct iattr *iattr)
 {
 	struct inode *inode = d_inode(dentry);
@@ -1240,10 +1250,10 @@ xdfs_setsize(struct inode *inode, loff_t newsize)
 
 	inode_dio_wait(inode);
 
-	error = block_truncate_page(inode->i_mapping,
-			newsize, ext2_get_block);
-	if (error)
-		return error;
+	// error = block_truncate_page(inode->i_mapping,
+	// 		newsize, ext2_get_block);
+	// if (error)
+	// 	return error;
 
 	filemap_invalidate_lock(inode->i_mapping);
 	truncate_setsize(inode, newsize);
