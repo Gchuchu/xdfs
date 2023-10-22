@@ -122,9 +122,11 @@ struct xdfs_inode
     unsigned int block_size_in_bit;				/* The size of the block in bits */
     blkcnt_t using_block_num;					/* The num of blks file using */
     unsigned long state;				/* State flag  */
+	unsigned long blockno;
     atomic_t inode_count;					/* Inode reference count  */
 
     UINT32 addr[XDFS_DIRECT_BLOCKS];	/* Store the address */
+
 };
 
 struct xdfs_dir_entry{
@@ -425,6 +427,8 @@ printf("part 1 is OK\n");
 				root_inode->gid = 0;
 				root_inode->using_block_num = 1;
 				root_inode->addr[0] = DS_BLKNO;
+				root_inode->file_size = sizeof(struct xdfs_dir_entry);
+				root_inode
 				write(devfd, p_inode_set, 1 * sizeof(struct xdfs_inode));
 				memset(p_inode_set, 0x0, 1 * sizeof(struct xdfs_inode));
 				continue;
@@ -585,20 +589,20 @@ printf("DATA_SPACE START\n");
 	write(devfd, a, (SB_BLKNO-DS_BLKNO)*BLKSIZE);
 	free(a);
 
-	// struct xdfs_dir_entry* de;
-	// const char *str = "what";
-	// int name_len = strlen(str);
-	// de = (struct xdfs_dir_entry *)malloc(sizeof(struct xdfs_dir_entry));
-	// de->file_type = FT_DIR;
-	// strcpy(de->name,str);
-	// de->inode_no = XDFS_ROOT_INO;
-	// de->name_len = name_len;
-	// de->dir_entry_len = sizeof(de);
-	// if (de == NULL)
-    // 	return (ERROR);
-	// memset(de, 0x00, sizeof(struct xdfs_dir_entry));	/*缓冲区置0x00*/
-	// write(devfd, de, sizeof(struct xdfs_dir_entry));
-	// free(de);
+	struct xdfs_dir_entry* de;
+	const char *str = "what";
+	int name_len = strlen(str);
+	de = (struct xdfs_dir_entry *)malloc(sizeof(struct xdfs_dir_entry));
+	de->file_type = FT_DIR;
+	strcpy(de->name,str);
+	de->inode_no = XDFS_ROOT_INO;
+	de->name_len = name_len;
+	de->dir_entry_len = sizeof(de);
+	if (de == NULL)
+    	return (ERROR);
+	memset(de, 0x00, sizeof(struct xdfs_dir_entry));	/*缓冲区置0x00*/
+	write(devfd, de, sizeof(struct xdfs_dir_entry));
+	free(de);
 
 printf("DATA_SPACE END\n");
 /*************************DATA_SPACE_END*************************/

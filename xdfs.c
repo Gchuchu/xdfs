@@ -133,6 +133,7 @@ struct xdfs_inode
     unsigned int block_size_in_bit;				/* The size of the block in bits */
     blkcnt_t using_block_num;					/* The num of blks file using */
     unsigned long state;				/* State flag  */
+	unsigned long blockno;
     atomic_t inode_count;					/* Inode reference count  */
 
     UINT32 addr[XDFS_DIRECT_BLOCKS];	/* Store the address */
@@ -196,6 +197,12 @@ static void xdfs_put_super(struct super_block *s);
 static int xdfs_write_super(struct super_block *sb,int wait);
 static int xdfs_statfs(struct dentry *dentry, struct kstatfs * buf);
 
+static ssize_t xdfs_dir_listxattr(struct dentry *dentry, char *buffer, size_t buffer_size);
+int xdfs_dir_getattr(struct user_namespace *mnt_userns, const struct path *path,
+		 struct kstat *stat, u32 request_mask, unsigned int query_flags);
+
+int xdfs_dir_setattr(struct user_namespace *mnt_userns, struct dentry *dentry,
+		 struct iattr *iattr);
 static int xdfs_open(struct inode *inode, struct file *filp);
 static ssize_t xdfs_read_iter(struct kiocb *iocb, struct iov_iter *to);
 static ssize_t xdfs_write_iter(struct kiocb *iocb, struct iov_iter *from);
@@ -438,10 +445,14 @@ xdfs_iget(struct super_block *sb, unsigned long ino)
 	i_gid_write(inod, i_gid);
     // inod->i_uid.val = raw_inode->uid;
     // inod->i_gid.val = raw_inode->gid;
+	raw_inode->atime = CURRENT_TIME_SEC;
+	raw_inode->ctime = CURRENT_TIME_SEC;
+	raw_inode->mtime = CURRENT_TIME_SEC;
 	inod->i_atime.tv_sec = (signed)le32_to_cpu(raw_inode->atime);
 	inod->i_ctime.tv_sec = (signed)le32_to_cpu(raw_inode->ctime);
 	inod->i_mtime.tv_sec = (signed)le32_to_cpu(raw_inode->mtime);
-	inod->i_generation =0;
+	inod->i_generation = 1;
+	inode->i_block = raw_inode->blockno;
     // set_nlink(inod,raw_inode->inode_count.counter);
 	if(inod->i_nlink==0)
 	{
@@ -784,14 +795,165 @@ static struct address_space_operations xdfs_aops = {
 };
 static struct inode_operations xdfs_inode_operations = {
     //这个地方我觉得编写的有问题//是否需要
-	.listxattr	    = xdfs_dir_listxattr,
-	.getattr	= xdfs_dir_getattr,
-	.setattr	= xdfs_dir_setattr,
+	.listxattr	    = xdfs_listxattr,
+	.getattr	= xdfs_getattr,
+	.setattr	= xdfs_setattr,
     //link : my_link,
     //unlink : my_unlink,
 };
 
 
+static ssize_t
+xdfs_listxattr(struct dentry *dentry, char *buffer, size_t buffer_size)
+{
+	struct inode *inode = dentry->d_inode;
+	struct buffer_head *bh = NULL;
+	char *end;
+	size_t rest = buffer_size;
+	int error;
+
+	xdfs_printk("xdfs_listxattr is called\n");
+
+// 	down_read(&EXT2_I(inode)->xattr_sem);
+// 	error = 0;
+// 	if (!EXT2_I(inode)->i_file_acl)
+// 		goto cleanup;
+// 	ea_idebug(inode, "reading block %d", EXT2_I(inode)->i_file_acl);
+// 	bh = sb_bread(inode->i_sb, EXT2_I(inode)->i_file_acl);
+// 	error = -EIO;
+// 	if (!bh)
+// 		goto cleanup;
+// 	ea_bdebug(bh, "b_count=%d, refcount=%d",
+// 		atomic_read(&(bh->b_count)), le32_to_cpu(HDR(bh)->h_refcount));
+// 	end = bh->b_data + bh->b_size;
+// 	if (HDR(bh)->h_magic != cpu_to_le32(EXT2_XATTR_MAGIC) ||
+// 	    HDR(bh)->h_blocks != cpu_to_le32(1)) {
+// bad_block:	ext2_error(inode->i_sb, "ext2_xattr_list",
+// 			"inode %ld: bad block %d", inode->i_ino,
+// 			EXT2_I(inode)->i_file_acl);
+// 		error = -EIO;
+// 		goto cleanup;
+// 	}
+
+// 	/* check the on-disk data structure */
+// 	entry = FIRST_ENTRY(bh);
+// 	while (!IS_LAST_ENTRY(entry)) {
+// 		struct ext2_xattr_entry *next = EXT2_XATTR_NEXT(entry);
+
+// 		if ((char *)next >= end)
+// 			goto bad_block;
+// 		entry = next;
+// 	}
+// 	if (ext2_xattr_cache_insert(bh))
+// 		ea_idebug(inode, "cache insert failed");
+
+// 	/* list the attribute names */
+// 	for (entry = FIRST_ENTRY(bh); !IS_LAST_ENTRY(entry);
+// 	     entry = EXT2_XATTR_NEXT(entry)) {
+// 		const struct xattr_handler *handler =
+// 			ext2_xattr_handler(entry->e_name_index);
+
+// 		if (handler) {
+// 			size_t size = handler->list(dentry, buffer, rest,
+// 						    entry->e_name,
+// 						    entry->e_name_len,
+// 						    handler->flags);
+// 			if (buffer) {
+// 				if (size > rest) {
+// 					error = -ERANGE;
+// 					goto cleanup;
+// 				}
+// 				buffer += size;
+// 			}
+// 			rest -= size;
+// 		}
+// 	}
+// 	error = buffer_size - rest;  /* total size */
+
+	xdfs_printk("xdfs_listxattr return\n");
+
+cleanup:
+	brelse(bh);
+	// up_read(&XDFS_I(inode)->xattr_sem);
+
+	xdfs_printk("xdfs_listxattr return error !!!\n");
+	
+	return error;
+}
+
+int 
+xdfs_getattr(struct user_namespace *mnt_userns, const struct path *path,
+		 struct kstat *stat, u32 request_mask, unsigned int query_flags)
+{
+
+	struct inode *inode = d_inode(path->dentry);
+	xdfs_printk("xdfs_getattr is called\n");
+
+
+	printk("%x stat->dev = inode->i_sb->s_dev",stat->dev);
+	printk("%x stat->ino = inode->i_ino",stat->ino);
+	printk("%x stat->mode = inode->i_mode",stat->mode);
+	printk("%x stat->nlink = inode->i_nlink",stat->nlink);
+	printk("%x stat->uid = vfsuid_into_kuid(vfsuid)",stat->uid);
+	printk("%x stat->gid = vfsgid_into_kgid(vfsgid)",stat->gid);
+	printk("%x stat->rdev = inode->i_rdev",stat->rdev);
+	printk("%x stat->size = i_size_read(inode)",stat->size);
+	printk("%x stat->atime = inode->i_atime",stat->atime);
+	printk("%x stat->mtime = inode->i_mtime",stat->mtime);
+	printk("%x stat->ctime = inode->i_ctime",stat->ctime);
+	printk("%x stat->blksize = i_blocksize(inode)",stat->blksize);
+	printk("%x stat->blocks = inode->i_blocks",stat->blocks);
+
+	stat->attributes_mask |= (STATX_ATTR_APPEND |
+			STATX_ATTR_COMPRESSED |
+			STATX_ATTR_ENCRYPTED |
+			STATX_ATTR_IMMUTABLE |
+			STATX_ATTR_NODUMP);
+	generic_fillattr(&init_user_ns, inode, stat);
+	printk("%x stat->dev = inode->i_sb->s_dev",stat->dev);
+	printk("%x stat->ino = inode->i_ino",stat->ino);
+	printk("%x stat->mode = inode->i_mode",stat->mode);
+	printk("%x stat->nlink = inode->i_nlink",stat->nlink);
+	printk("%x stat->uid = vfsuid_into_kuid(vfsuid)",stat->uid);
+	printk("%x stat->gid = vfsgid_into_kgid(vfsgid)",stat->gid);
+	printk("%x stat->rdev = inode->i_rdev",stat->rdev);
+	printk("%x stat->size = i_size_read(inode)",stat->size);
+	printk("%x stat->atime = inode->i_atime",stat->atime);
+	printk("%x stat->mtime = inode->i_mtime",stat->mtime);
+	printk("%x stat->ctime = inode->i_ctime",stat->ctime);
+	printk("%x stat->blksize = i_blocksize(inode)",stat->blksize);
+	printk("%x stat->blocks = inode->i_blocks",stat->blocks);
+	xdfs_printk("xdfs_getattr return\n");
+	return 0;
+}
+int 
+xdfs_setattr(struct user_namespace *mnt_userns, struct dentry *dentry,
+		 struct iattr *iattr)
+{
+	struct inode *inode = d_inode(dentry);
+	int error;
+
+	xdfs_printk("xdfs_setattr is called\n");
+
+	error = setattr_prepare(&init_user_ns, dentry, iattr);
+	if (error)
+	{
+		return error;
+	}
+	
+	if (iattr->ia_valid & ATTR_SIZE && iattr->ia_size != inode->i_size) {
+		error = xdfs_setsize(inode, iattr->ia_size);
+		if (error)
+			return error;
+	}
+	setattr_copy(&init_user_ns, inode, iattr);
+	if (iattr->ia_valid & ATTR_MODE)
+		error = posix_acl_chmod(&init_user_ns, dentry, inode->i_mode);
+	mark_inode_dirty(inode);
+	
+	xdfs_printk("xdfs_setattr return\n");
+	return error;
+}
 
 static struct file_operations xdfs_file_operations = {
 	open : xdfs_open,
