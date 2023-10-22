@@ -428,7 +428,6 @@ printf("part 1 is OK\n");
 				root_inode->using_block_num = 1;
 				root_inode->addr[0] = DS_BLKNO;
 				root_inode->file_size = sizeof(struct xdfs_dir_entry);
-				root_inode
 				write(devfd, p_inode_set, 1 * sizeof(struct xdfs_inode));
 				memset(p_inode_set, 0x0, 1 * sizeof(struct xdfs_inode));
 				continue;

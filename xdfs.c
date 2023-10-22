@@ -197,11 +197,11 @@ static void xdfs_put_super(struct super_block *s);
 static int xdfs_write_super(struct super_block *sb,int wait);
 static int xdfs_statfs(struct dentry *dentry, struct kstatfs * buf);
 
-static ssize_t xdfs_dir_listxattr(struct dentry *dentry, char *buffer, size_t buffer_size);
-int xdfs_dir_getattr(struct user_namespace *mnt_userns, const struct path *path,
+static ssize_t xdfs_listxattr(struct dentry *dentry, char *buffer, size_t buffer_size);
+int xdfs_getattr(struct user_namespace *mnt_userns, const struct path *path,
 		 struct kstat *stat, u32 request_mask, unsigned int query_flags);
 
-int xdfs_dir_setattr(struct user_namespace *mnt_userns, struct dentry *dentry,
+int xdfs_setattr(struct user_namespace *mnt_userns, struct dentry *dentry,
 		 struct iattr *iattr);
 static int xdfs_open(struct inode *inode, struct file *filp);
 static ssize_t xdfs_read_iter(struct kiocb *iocb, struct iov_iter *to);
@@ -445,14 +445,14 @@ xdfs_iget(struct super_block *sb, unsigned long ino)
 	i_gid_write(inod, i_gid);
     // inod->i_uid.val = raw_inode->uid;
     // inod->i_gid.val = raw_inode->gid;
-	raw_inode->atime = CURRENT_TIME_SEC;
-	raw_inode->ctime = CURRENT_TIME_SEC;
-	raw_inode->mtime = CURRENT_TIME_SEC;
+	raw_inode->atime = current_time(inod).tv_sec;
+	raw_inode->ctime = current_time(inod).tv_sec;
+	raw_inode->mtime = current_time(inod).tv_sec;
 	inod->i_atime.tv_sec = (signed)le32_to_cpu(raw_inode->atime);
 	inod->i_ctime.tv_sec = (signed)le32_to_cpu(raw_inode->ctime);
 	inod->i_mtime.tv_sec = (signed)le32_to_cpu(raw_inode->mtime);
 	inod->i_generation = 1;
-	inode->i_block = raw_inode->blockno;
+	inode->i_blocks = raw_inode->blockno;
     // set_nlink(inod,raw_inode->inode_count.counter);
 	if(inod->i_nlink==0)
 	{
@@ -463,7 +463,7 @@ xdfs_iget(struct super_block *sb, unsigned long ino)
 	}
     inod->i_size = raw_inode->file_size;
     // inod->i_blocks = raw_inode->blocks;
-	inod->i_blkbits = 0; 
+	// inod->i_blkbits = 0; 
 	
 	inod->i_private=(void*)kvmalloc(sizeof(struct xdfs_inode),GFP_KERNEL);   //内核分配
 	memcpy(inod->i_private, raw_inode, sizeof(struct xdfs_inode));    //raw_inode:struct xdfs_incore_inode类型
