@@ -221,7 +221,7 @@ static int xdfs_dir_create (struct user_namespace * mnt_userns,
 			struct inode * dir, struct dentry * dentry,
 			umode_t mode, bool excl);
 			
-static int xdfs_dir_listxattr(struct dentry *dentry, char *buffer, size_t buffer_size);
+static ssize_t xdfs_dir_listxattr(struct dentry *dentry, char *buffer, size_t buffer_size);
 int xdfs_dir_getattr(struct user_namespace *mnt_userns, const struct path *path,
 		 struct kstat *stat, u32 request_mask, unsigned int query_flags);
 
@@ -784,6 +784,9 @@ static struct address_space_operations xdfs_aops = {
 };
 static struct inode_operations xdfs_inode_operations = {
     //这个地方我觉得编写的有问题//是否需要
+	.listxattr	    = xdfs_dir_listxattr,
+	.getattr	= xdfs_dir_getattr,
+	.setattr	= xdfs_dir_setattr,
     //link : my_link,
     //unlink : my_unlink,
 };
@@ -1113,7 +1116,7 @@ xdfs_dir_create (struct user_namespace * mnt_userns,
 	return 0;
 }
 
-static int
+static ssize_t
 xdfs_dir_listxattr(struct dentry *dentry, char *buffer, size_t buffer_size)
 {
 	struct inode *inode = dentry->d_inode;
@@ -1122,7 +1125,7 @@ xdfs_dir_listxattr(struct dentry *dentry, char *buffer, size_t buffer_size)
 	size_t rest = buffer_size;
 	int error;
 
-	xdfs_printk("xdfs_xattr_list is called\n");
+	xdfs_printk("xdfs_dir_listxattr is called\n");
 
 // 	down_read(&EXT2_I(inode)->xattr_sem);
 // 	error = 0;
@@ -1184,7 +1187,7 @@ xdfs_dir_listxattr(struct dentry *dentry, char *buffer, size_t buffer_size)
 
 cleanup:
 	brelse(bh);
-	up_read(&XDFS_I(inode)->xattr_sem);
+	// up_read(&XDFS_I(inode)->xattr_sem);
 
 	xdfs_printk("xdfs_dir_listxattr return error !!!\n");
 	
@@ -1199,10 +1202,43 @@ xdfs_dir_getattr(struct user_namespace *mnt_userns, const struct path *path,
 {
 
 	struct inode *inode = d_inode(path->dentry);
-	xdfs_printk("get_dir_attr is called\n");
-	
+	xdfs_printk("xdfs_dir_getattr is called\n");
+
+
+	printk("%x stat->dev = inode->i_sb->s_dev",stat->dev);
+	printk("%x stat->ino = inode->i_ino",stat->ino);
+	printk("%x stat->mode = inode->i_mode",stat->mode);
+	printk("%x stat->nlink = inode->i_nlink",stat->nlink);
+	printk("%x stat->uid = vfsuid_into_kuid(vfsuid)",stat->uid);
+	printk("%x stat->gid = vfsgid_into_kgid(vfsgid)",stat->gid);
+	printk("%x stat->rdev = inode->i_rdev",stat->rdev);
+	printk("%x stat->size = i_size_read(inode)",stat->size);
+	printk("%x stat->atime = inode->i_atime",stat->atime);
+	printk("%x stat->mtime = inode->i_mtime",stat->mtime);
+	printk("%x stat->ctime = inode->i_ctime",stat->ctime);
+	printk("%x stat->blksize = i_blocksize(inode)",stat->blksize);
+	printk("%x stat->blocks = inode->i_blocks",stat->blocks);
+
+	stat->attributes_mask |= (STATX_ATTR_APPEND |
+			STATX_ATTR_COMPRESSED |
+			STATX_ATTR_ENCRYPTED |
+			STATX_ATTR_IMMUTABLE |
+			STATX_ATTR_NODUMP);
 	generic_fillattr(&init_user_ns, inode, stat);
-	xdfs_printk("get_dir_attr return\n");
+	printk("%x stat->dev = inode->i_sb->s_dev",stat->dev);
+	printk("%x stat->ino = inode->i_ino",stat->ino);
+	printk("%x stat->mode = inode->i_mode",stat->mode);
+	printk("%x stat->nlink = inode->i_nlink",stat->nlink);
+	printk("%x stat->uid = vfsuid_into_kuid(vfsuid)",stat->uid);
+	printk("%x stat->gid = vfsgid_into_kgid(vfsgid)",stat->gid);
+	printk("%x stat->rdev = inode->i_rdev",stat->rdev);
+	printk("%x stat->size = i_size_read(inode)",stat->size);
+	printk("%x stat->atime = inode->i_atime",stat->atime);
+	printk("%x stat->mtime = inode->i_mtime",stat->mtime);
+	printk("%x stat->ctime = inode->i_ctime",stat->ctime);
+	printk("%x stat->blksize = i_blocksize(inode)",stat->blksize);
+	printk("%x stat->blocks = inode->i_blocks",stat->blocks);
+	xdfs_printk("xdfs_dir_getattr return\n");
 	return 0;
 }
 int 
