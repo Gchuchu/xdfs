@@ -140,6 +140,28 @@ struct xdfs_inode
 
 };
 
+struct xdfs_inode
+{
+    umode_t mode;						/* IS directory?  */
+    uid_t uid; 						/* User id */
+    gid_t gid;						/* User group id */
+	unsigned long flags;			/* file flags */
+    unsigned long inode_no;				/* Stat data, not accessed from path walking, the unique label of the inode */
+    unsigned int num_link;				/* The num of the hard link  */
+    loff_t file_size;					/* The file size in bytes */
+    unsigned long ctime;      		/* The last time the file attributes */
+    unsigned long mtime;      		/* The last time the file data was changed */
+    unsigned long atime;      		/* The last time the file data was accessed */
+    unsigned int block_size_in_bit;				/* The size of the block in bits */
+    unsigned long state;				/* State flag  */
+	unsigned long blockno;				/* inode blkno */
+	unsigned long file_blockno;				/* file blkno */
+    blkcnt_t using_block_num;				/* The num of blks file using */
+    atomic_t inode_count;					/* Inode reference count  */
+
+};
+
+
 /* xdfs_inode in memory and extend something */
 struct xdfs_inode_info{
 	UINT32	i_data[15];
@@ -685,19 +707,19 @@ struct kmem_cache * xdfs_inode_cachep;
 static struct inode *
 xdfs_alloc_inode(struct super_block *sb)
 {
-	struct xdfs_inode_info * xd_inode;
+	struct xdfs_inode_info * xd_inode_info;
 
 	xdfs_printk("alloc_inode is called\n");
 
-	xd_inode = alloc_inode_sb(sb, xdfs_inode_cachep, GFP_KERNEL);
-	if (!xd_inode)
+	xd_inode_info = alloc_inode_sb(sb, xdfs_inode_cachep, GFP_KERNEL);
+	if (!xd_inode_info)
 		return NULL;
-	// xd_inode->addr = NULL;
-	inode_set_iversion(&xd_inode->vfs_inode, 1);
+	// xd_inode_info->addr = NULL;
+	inode_set_iversion(&xd_inode_info->vfs_inode, 1);
 
 	xdfs_printk("alloc_inode return\n");
 
-	return &xd_inode->vfs_inode;
+	return &xd_inode_info->vfs_inode;
 }
 
 static int __init init_inodecache(void)
@@ -857,6 +879,7 @@ xdfs_get_block(struct inode *inode, sector_t iblock,
 
 	map_bh(bh_result, inode->i_sb, bno);
 	bh_result->b_size = (ret << inode->i_blkbits);
+	
 	if (new)
 		set_buffer_new(bh_result);
 	if (boundary)
@@ -873,7 +896,12 @@ xdfs_get_blocks(struct inode *inode,
 			   int create)
 {
 	xdfs_printk("xdfs_get_block is called \n");
-	
+	struct xdfs_inode* xd_inode = (struct xdfs_inode*)inode->i_private;
+
+	iblock = xd_inode->file_blockno;
+	maxblocks = xd_inode->using_block_num;
+	bno
+
 	xdfs_printk("xdfs_get_block return \n");
 	return 0;
 }
