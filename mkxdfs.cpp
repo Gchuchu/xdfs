@@ -121,12 +121,11 @@ struct xdfs_inode
     unsigned long mtime;      		/* The last time the file data was changed */
     unsigned long atime;      		/* The last time the file data was accessed */
     unsigned int block_size_in_bit;				/* The size of the block in bits */
-    blkcnt_t using_block_num;					/* The num of blks file using */
     unsigned long state;				/* State flag  */
-	unsigned long blockno;
+	unsigned long blockno;				/* inode blkno */
+	unsigned long file_blockno;				/* file blkno */
+    blkcnt_t using_block_num;				/* The num of blks file using */
     atomic_t inode_count;					/* Inode reference count  */
-
-    UINT32 addr[XDFS_DIRECT_BLOCKS];	/* Store the address */
 
 };
 

@@ -213,6 +213,7 @@ static ssize_t xdfs_splice_write(struct pipe_inode_info *pipe, struct file *out,
 			  loff_t *ppos, size_t len, unsigned int flags);
 static loff_t xdfs_file_llseek(struct file *file, loff_t offset, int whence);
 static int xdfs_file_mmap(struct file *file, struct vm_area_struct *vma);
+static int xdfs_release_file (struct inode * inode, struct file * filp);
 static int xdfs_file_fsync(struct file *file, loff_t start, loff_t end, int datasync);
 
 static loff_t xdfs_generic_file_llseek(struct file *file, loff_t offset, int whence);
@@ -412,6 +413,16 @@ xdfs_iget(struct super_block *sb, unsigned long ino)
 	printk("XDFS: xdfs_inode->block_size_in_bit   %d",raw_inode->block_size_in_bit);
 	printk("XDFS: xdfs_inode->addr                %p",raw_inode->addr);
 	printk("XDFS: xdfs_inode->inode_count.counter %d",raw_inode->inode_count.counter);
+	printk("XDFS: inode->i_nlink =   %d",inod->i_nlink);
+	
+	printk("XDFS: inode->i_sb->s_dev         %ld",inod->i_sb->s_dev);
+	printk("XDFS: inode->i_mode              %ld",inod->i_mode);
+	printk("XDFS: inode->i_ino               %ld",inod->i_ino);
+	printk("XDFS: inode->i_nlink             %d", inod->i_nink);
+	printk("XDFS: inode->i_state             %ld",inod->i_state);
+	printk("XDFS: inode->i_atime             %d", inod->i_atime.tv_sec);
+	printk("XDFS: inode->i_ctime             %p", inod->i_ctime.tv_sec);
+	printk("XDFS: inode->i_mtime             %d", inod->i_mtime.tv_sec);
 	printk("XDFS: inode->i_nlink =   %d",inod->i_nlink);
 #endif
 	
@@ -659,14 +670,14 @@ static void __exit exit_xdfs_fs(void)
 /* operations set  and achievement*/
 // all is commented to test mount ? all achieve printk to test mount(used)
 static struct super_operations xdfs_sops = {
-    //read_inode : xdfs_read_inode,//2.6没有这一项 已经和iget合并为my_iget
-	alloc_inode : xdfs_alloc_inode,
-	write_inode : xdfs_write_inode,
-	evict_inode : xdfs_evict_inode,
-	put_super : xdfs_put_super,
-	sync_fs : xdfs_sync_fs,
-	statfs : xdfs_statfs,
-    //drop_inode: xdfs_delete_inode,//generic_drop_inode,//如果这里不定义的话 系统会自动调用generic_drop_inode
+    //.read_inode = xdfs_read_inode,//2.6没有这一项 已经和iget合并为my_iget
+	.alloc_inode = xdfs_alloc_inode,
+	.write_inode = xdfs_write_inode,
+	.evict_inode = xdfs_evict_inode,
+	.put_super = xdfs_put_super,
+	.sync_fs = xdfs_sync_fs,
+	.statfs = xdfs_statfs,
+    //.drop_inode= xdfs_delete_inode,//generic_drop_inode,//如果这里不定义的话 系统会自动调用generic_drop_inode
 };
 
 struct kmem_cache * xdfs_inode_cachep;
@@ -791,13 +802,81 @@ xdfs_statfs(struct dentry *dentry, struct kstatfs * buf)
 
 static struct address_space_operations xdfs_aops = {
     //是否需要
-    // readpage : my_readpage,
-    // writepage : my_writepage,
-    // sync_page : block_sync_page,
-    // prepare_write : my_prepare_write,
-    // commit_write : generic_commit_write,
-    // bmap : my_bmap,
+    .readpages = xdfs_readpages,
+    .readpage = xdfs_readpage,
+    .writepage = xdfs_writepage,
+    // .sync_page = block_sync_page,
+    // .prepare_write = my_prepare_write,
+    // .commit_write = generic_commit_write,
+    // .bmap = my_bmap,
 };
+
+
+static int xdfs_writepage(struct page *page, struct writeback_control *wbc)
+{
+	xdfs_printk("xdfs_writepage is called and return \n");
+	return block_write_full_page(page, xdfs_get_block, wbc);
+}
+
+static int
+xdfs_readpages(struct file *file, struct address_space *mapping,
+		struct list_head *pages, unsigned nr_pages)
+{
+	xdfs_printk("xdfs_readpages is called and return \n");
+	return mpage_readpages(mapping, pages, nr_pages, xdfs_get_block);
+}
+
+static int xdfs_readpage(struct file *file, struct page *page)
+{
+	xdfs_printk("xdfs_readpage is called and return \n");
+	return mpage_readpage(page, xdfs_get_block);
+}
+
+static sector_t xdfs_bmap(struct address_space *mapping, sector_t block)
+{
+	xdfs_printk("xdfs_bmap is called and return \n");
+	return generic_block_bmap(mapping,block,xdfs_get_block);
+}
+
+int 
+xdfs_get_block(struct inode *inode, sector_t iblock,
+		struct buffer_head *bh_result, int create)
+{
+	unsigned max_blocks = bh_result->b_size >> inode->i_blkbits;
+	bool new = false, boundary = false;
+	u32 bno;
+	int ret;
+
+	xdfs_printk("xdfs_get_block is called \n");
+
+	ret = xdfs_get_blocks(inode, iblock, max_blocks, &bno, &new, &boundary,
+			create);
+
+	if (ret <= 0)
+		return ret;
+
+	map_bh(bh_result, inode->i_sb, bno);
+	bh_result->b_size = (ret << inode->i_blkbits);
+	if (new)
+		set_buffer_new(bh_result);
+	if (boundary)
+		set_buffer_boundary(bh_result);
+	xdfs_printk("xdfs_get_block return \n");
+	return 0;
+
+}
+
+static int 
+xdfs_get_blocks(struct inode *inode,
+			   sector_t iblock, unsigned long maxblocks,
+			   u32 *bno, bool *new, bool *boundary,
+			   int create)
+{
+	xdfs_printk("xdfs_get_block is called \n");
+	
+	xdfs_printk("xdfs_get_block return \n");
+	return 0;
+}
 static struct inode_operations xdfs_inode_operations = {
     //这个地方我觉得编写的有问题//是否需要
 	.listxattr	    = xdfs_listxattr,
