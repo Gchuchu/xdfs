@@ -954,6 +954,7 @@ static struct file_operations xdfs_file_operations = {
 	splice_write : xdfs_splice_write,
 	llseek : xdfs_file_llseek,
 	mmap : xdfs_file_mmap,
+	release : xdfs_release_file,
 	//  aio_read : generic_file_aio_read,
 	//  aio_write : generic_file_aio_write,
 	fsync : xdfs_file_fsync, //给文件里面也加一个fsync就可以用vi 修改文件实现同步。
@@ -1073,6 +1074,20 @@ xdfs_file_mmap(struct file *file, struct vm_area_struct *vma)
 }
 
 static int 
+xdfs_release_file (struct inode * inode, struct file * filp)
+{
+	int error;
+#ifdef XDFS_DEBUG
+	printk("XDFS: release_file is called\n");
+#endif
+
+
+#ifdef XDFS_DEBUG
+	printk("XDFS: release_file return\n");
+#endif
+	return 0;
+}
+static int 
 xdfs_file_fsync(struct file *file, loff_t start, loff_t end, int datasync)
 {
 	int error;
@@ -1087,6 +1102,7 @@ xdfs_file_fsync(struct file *file, loff_t start, loff_t end, int datasync)
 }
 
 static struct file_operations xdfs_file_dir_operations = {
+	
 	.llseek		= xdfs_generic_file_llseek,
 	.read		= xdfs_generic_read_dir,
 	.iterate_shared	= xdfs_readdir,
@@ -1117,6 +1133,10 @@ xdfs_generic_read_dir(struct file *filp, char __user *buf, size_t siz, loff_t *p
 {
 #ifdef XDFS_DEBUG
 	printk("XDFS: xdfs_generic_read_dir is called\n");
+	// ssize_t generic_read_dir(struct file *filp, char __user *buf, size_t siz, loff_t *ppos)
+	// {
+	// 	return -EISDIR;
+	// }
 	printk("XDFS: xdfs_generic_read_dir return\n");
 #endif
 	return -EISDIR;
