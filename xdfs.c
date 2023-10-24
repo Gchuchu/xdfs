@@ -9,6 +9,7 @@
 #include <linux/statfs.h>
 #include <asm/uaccess.h> 		/* copy_to_user */
 #include <linux/mpage.h> 	/* mpage */
+#include <linux/exportfs.h>	/* export_fs */
 #include <linux/buffer_head.h>
 #include <linux/sched.h>
 #include <linux/device.h>
@@ -255,8 +256,7 @@ int xdfs_getattr(struct user_namespace *mnt_userns, const struct path *path,
 int xdfs_setattr(struct user_namespace *mnt_userns, struct dentry *dentry,
 		 struct iattr *iattr);
 
-int xdfs_fiemap(struct inode *inode, struct fiemap_extent_info *fieinfo,
-		u64 start, u64 len);
+
 
 static int xdfs_open(struct inode *inode, struct file *filp);
 static ssize_t xdfs_read_iter(struct kiocb *iocb, struct iov_iter *to);
@@ -280,10 +280,10 @@ static int xdfs_fsync(struct file *file, loff_t start, loff_t end, int datasync)
 
 static struct dentry *
 xdfs_fh_to_dentry(struct super_block *sb, struct fid *fid,
-		int fh_len, int fh_type)
+		int fh_len, int fh_type);
 static struct dentry *
 xdfs_fh_to_parent(struct super_block *sb, struct fid *fid,
-		int fh_len, int fh_type)
+		int fh_len, int fh_type);
 struct dentry *xdfs_get_parent(struct dentry *child);
 
 int xdfs_inode_by_name(struct inode *dir, const struct qstr *child, ino_t *ino);
@@ -705,7 +705,7 @@ xdfs_inode_by_name(struct inode *dir, const struct qstr *child, ino_t *ino)
 	if (IS_ERR(de))
 		return PTR_ERR(de);
 
-	*ino = le32_to_cpu(de->inode);
+	*ino = le32_to_cpu(de->inode_no);
 	xdfs_put_page(page, page_addr);
 
 	xdfs_printk("xdfs_inode_by_name return\n");
@@ -719,12 +719,12 @@ xdfs_find_entry (struct inode *dir,
 {
 	const char *name = child->name;
 	int namelen = child->len;
-	unsigned reclen = child->dir_entry_len;
+	unsigned reclen = namelen+8;
 	unsigned long start, n;
 	unsigned long npages = dir_pages(dir);
 	struct page *page = NULL;
 	struct xdfs_inode_info *ei = XDFS_I(dir);
-	xdfs_dir_entry * de;
+	struct xdfs_dir_entry * de;
 	void *page_addr;
 	unsigned last_byte;
 	xdfs_printk("xdfs_find_entry is called\n");
@@ -747,11 +747,11 @@ xdfs_find_entry (struct inode *dir,
 			return ERR_CAST(page);
 
 		kaddr = page_addr;
-		de = (xdfs_dir_entry *) kaddr;
+		de = (struct xdfs_dir_entry *) kaddr;
 
 		
 		//xdfs_last_byte(dir,n)
-		last_byte = inode->i_size -( n << PAGE_SHIFT);
+		last_byte = dir->i_size -( n << PAGE_SHIFT);
 		if(last_byte > PAGE_SIZE){ last_byte = PAGE_SIZE;}
 
 		kaddr += last_byte - reclen;
@@ -761,7 +761,7 @@ xdfs_find_entry (struct inode *dir,
 				xdfs_put_page(page, page_addr);
 				goto out;
 			}
-			if (/* xdfs_match (namelen, name, de)*/(len == de->name_len)&&(de->inode)&&(memcmp(name, de->name, len)))
+			if (/* xdfs_match (namelen, name, de)*/(namelen == de->name_len)&&(de->inode_no)&&(memcmp(name, de->name, namelen)))
 					goto found;
 			de = xdfs_next_dir_entry(de);
 		}
@@ -1183,7 +1183,6 @@ static struct inode_operations xdfs_inode_operations = {
 	.listxattr	    = xdfs_listxattr,
 	.getattr	= xdfs_getattr,
 	.setattr	= xdfs_setattr,
-	.fiemap		= xdfs_fiemap,
     //link : my_link,
     //unlink : my_unlink,
 };
@@ -1327,17 +1326,7 @@ xdfs_setattr(struct user_namespace *mnt_userns, struct dentry *dentry,
 	return error;
 }
 
-int 
-xdfs_fiemap(struct inode *inode, struct fiemap_extent_info *fieinfo,
-		u64 start, u64 len)
-{
-	int ret;
-	xdfs_printk("fiemap is called \n");
-	ret = generic_block_fiemap(inode, fieinfo, start, len,
-				    ext2_get_block);
-	xdfs_printk("fiemap return \n");
-	return ret;
-}
+
 
 static struct file_operations xdfs_file_operations = {
 	open : xdfs_open,
