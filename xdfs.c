@@ -865,8 +865,7 @@ xdfs_get_block(struct inode *inode, sector_t iblock,
 		struct buffer_head *bh_result, int create)
 {
 	unsigned max_blocks = bh_result->b_size >> inode->i_blkbits;
-	bool new = false, boundary = false;
-	u32 bno;
+	
 	int ret;
 
 	xdfs_printk("xdfs_get_block is called \n");
@@ -877,13 +876,8 @@ xdfs_get_block(struct inode *inode, sector_t iblock,
 	if (ret <= 0)
 		return ret;
 
-	map_bh(bh_result, inode->i_sb, bno);
 	bh_result->b_size = (ret << inode->i_blkbits);
 	
-	if (new)
-		set_buffer_new(bh_result);
-	if (boundary)
-		set_buffer_boundary(bh_result);
 	xdfs_printk("xdfs_get_block return \n");
 	return 0;
 
@@ -892,15 +886,18 @@ xdfs_get_block(struct inode *inode, sector_t iblock,
 static int 
 xdfs_get_blocks(struct inode *inode,
 			   sector_t iblock, unsigned long maxblocks,
-			   u32 *bno, bool *new, bool *boundary,
+			   struct buffer_head *bh_result,
 			   int create)
 {
 	xdfs_printk("xdfs_get_block is called \n");
 	struct xdfs_inode* xd_inode = (struct xdfs_inode*)inode->i_private;
+	struct super_block *sb = inode->i_sb;
 
 	iblock = xd_inode->file_blockno;
 	maxblocks = xd_inode->using_block_num;
-	bno
+	bh_result = sb_bread(sb,xd_inode->file_blockno);
+
+	map_bh(bh_result, inode->i_sb, iblock);
 
 	xdfs_printk("xdfs_get_block return \n");
 	return 0;
