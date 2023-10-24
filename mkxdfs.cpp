@@ -424,7 +424,7 @@ printf("part 1 is OK\n");
 				root_inode->uid = 0;
 				root_inode->gid = 0;
 				root_inode->using_block_num = 1;
-				root_inode->addr[0] = DS_BLKNO;
+				// root_inode->addr[0] = DS_BLKNO;
 				root_inode->file_size = sizeof(struct xdfs_dir_entry);
 				root_inode->blockno = INODE_SET_BLKNO;
 				write(devfd, p_inode_set, 1 * sizeof(struct xdfs_inode));

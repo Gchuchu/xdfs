@@ -8,6 +8,7 @@
 #include <linux/cred.h>
 #include <linux/statfs.h>
 #include <asm/uaccess.h> 		/* copy_to_user */
+#include <linux/mpage.h> 	/* mpage */
 #include <linux/buffer_head.h>
 #include <linux/sched.h>
 #include <linux/device.h>
@@ -118,27 +119,27 @@ const int NUM_BLK = 32768;	/* 一共32768个块，128MB */
 #define SUPERBLOCK_NBLKS 1    	/* The SUPERBLOCK occupies 1 blk */
 #define XDFS_ID_STRING "xdfs" 	/* The name of xdfs*/
 
-struct xdfs_inode
-{
-    umode_t mode;						/* IS directory?  */
-    uid_t uid; 						/* User id */
-    gid_t gid;						/* User group id */
-	unsigned long flags;			/* file flags */
-    unsigned long inode_no;				/* Stat data, not accessed from path walking, the unique label of the inode */
-    unsigned int num_link;				/* The num of the hard link  */
-    loff_t file_size;					/* The file size in bytes */
-    unsigned long ctime;      		/* The last time the file attributes */
-    unsigned long mtime;      		/* The last time the file data was changed */
-    unsigned long atime;      		/* The last time the file data was accessed */
-    unsigned int block_size_in_bit;				/* The size of the block in bits */
-    blkcnt_t using_block_num;					/* The num of blks file using */
-    unsigned long state;				/* State flag  */
-	unsigned long blockno;
-    atomic_t inode_count;					/* Inode reference count  */
+// struct xdfs_inode
+// {
+//     umode_t mode;						/* IS directory?  */
+//     uid_t uid; 						/* User id */
+//     gid_t gid;						/* User group id */
+// 	unsigned long flags;			/* file flags */
+//     unsigned long inode_no;				/* Stat data, not accessed from path walking, the unique label of the inode */
+//     unsigned int num_link;				/* The num of the hard link  */
+//     loff_t file_size;					/* The file size in bytes */
+//     unsigned long ctime;      		/* The last time the file attributes */
+//     unsigned long mtime;      		/* The last time the file data was changed */
+//     unsigned long atime;      		/* The last time the file data was accessed */
+//     unsigned int block_size_in_bit;				/* The size of the block in bits */
+//     blkcnt_t using_block_num;					/* The num of blks file using */
+//     unsigned long state;				/* State flag  */
+// 	unsigned long blockno;
+//     atomic_t inode_count;					/* Inode reference count  */
 
-    UINT32 addr[XDFS_DIRECT_BLOCKS];	/* Store the address */
+//     UINT32 addr[XDFS_DIRECT_BLOCKS];	/* Store the address */
 
-};
+// };
 
 struct xdfs_inode
 {
@@ -166,6 +167,7 @@ struct xdfs_inode
 struct xdfs_inode_info{
 	UINT32	i_data[15];
 	UINT32  i_flags;
+	UINT32 i_dir_start_lookup;
 	struct inode vfs_inode;
 };
 
@@ -183,7 +185,7 @@ struct xdfs_superblock {
 #define XDFS_DIR_ENTRY_TOTAL_LEN(name_len)	(((name_len) + 8 + XDFS_DIR_ENTRY_MASK) & \
 					 ~XDFS_DIR_ENTRY_MASK)
 #define XDFS_MAX_ENTRY_TOTAL_LEN		((1<<16)-1)
-/* size of dir_entry is 3 bytes(32 bits)*/
+
 struct xdfs_dir_entry{
 	UINT32 inode_no;
 	UINT16 dir_entry_len; 
@@ -199,6 +201,7 @@ static struct inode_operations         xdfs_inode_dir_operations;
 static struct file_operations          xdfs_file_operations;
 static struct inode_operations         xdfs_inode_operations;
 static struct file_system_type         xdfs_fs_type;
+static struct export_operations xdfs_export_ops;
 /*all func declaration*/
 static int xdfs_fill_super(struct super_block *sb, void *data, int silent);
 static struct inode *xdfs_iget(struct super_block *sb, unsigned long ino);
@@ -251,6 +254,10 @@ int xdfs_getattr(struct user_namespace *mnt_userns, const struct path *path,
 
 int xdfs_setattr(struct user_namespace *mnt_userns, struct dentry *dentry,
 		 struct iattr *iattr);
+
+int xdfs_fiemap(struct inode *inode, struct fiemap_extent_info *fieinfo,
+		u64 start, u64 len);
+
 static int xdfs_open(struct inode *inode, struct file *filp);
 static ssize_t xdfs_read_iter(struct kiocb *iocb, struct iov_iter *to);
 static ssize_t xdfs_write_iter(struct kiocb *iocb, struct iov_iter *from);
@@ -271,6 +278,18 @@ static struct page * xdfs_get_page(struct inode *dir, unsigned long n, int quiet
 static inline void xdfs_put_page(struct page *page, void *page_addr);
 static int xdfs_fsync(struct file *file, loff_t start, loff_t end, int datasync);
 
+static struct dentry *
+xdfs_fh_to_dentry(struct super_block *sb, struct fid *fid,
+		int fh_len, int fh_type)
+static struct dentry *
+xdfs_fh_to_parent(struct super_block *sb, struct fid *fid,
+		int fh_len, int fh_type)
+struct dentry *xdfs_get_parent(struct dentry *child);
+
+int xdfs_inode_by_name(struct inode *dir, const struct qstr *child, ino_t *ino);
+struct xdfs_dir_entry *xdfs_find_entry (struct inode *dir,
+			const struct qstr *child, struct page **res_page,
+			void **res_page_addr);
 static struct xdfs_dir_entry * xdfs_next_dir_entry(struct xdfs_dir_entry* de);
 
 static int xdfs_dir_create (struct user_namespace * mnt_userns,
@@ -369,6 +388,7 @@ xdfs_fill_super(struct super_block *sb, void *data, int silent)
 	msleep(1000);
 #endif
 	sb->s_op = &xdfs_sops;
+	sb->s_export_op = &xdfs_export_ops;
 	sb->s_dev = dev;
 	
 	/* get a new vnode */
@@ -459,7 +479,7 @@ xdfs_iget(struct super_block *sb, unsigned long ino)
 	printk("XDFS: xdfs_inode->num_link            %d",raw_inode->num_link);
 	printk("XDFS: xdfs_inode->state               %ld",raw_inode->state);
 	printk("XDFS: xdfs_inode->block_size_in_bit   %d",raw_inode->block_size_in_bit);
-	printk("XDFS: xdfs_inode->addr                %p",raw_inode->addr);
+	// printk("XDFS: xdfs_inode->addr                %p",raw_inode->addr);
 	printk("XDFS: xdfs_inode->inode_count.counter %d",raw_inode->inode_count.counter);
 	printk("XDFS: inode->i_nlink =   			  %d",inod->i_nlink);
 	
@@ -480,6 +500,7 @@ xdfs_iget(struct super_block *sb, unsigned long ino)
 		inod->i_mode |= S_IFDIR;
 	}
 	raw_inode_info->i_flags = le32_to_cpu(raw_inode->flags);
+	raw_inode_info->i_dir_start_lookup = 0;
 	xdfs_set_inode_flags(inod);
 	if(S_ISREG(inod->i_mode))
 	{
@@ -534,7 +555,7 @@ xdfs_iget(struct super_block *sb, unsigned long ino)
 	brelse(bh);
 	inod->i_flags &= ~(S_SYNC | S_APPEND | S_IMMUTABLE | S_NOATIME |
                       S_DIRSYNC | S_DAX);
-  	inod->i_flags |= S_SYNC;
+  	inod->i_flags |= S_SYNC | S_DIRSYNC | S_NOATIME | S_APPEND;
 #ifdef XDFS_DEBUG
 	printk("XDFS: xdfs_iget ending\n");
 #endif
@@ -635,6 +656,139 @@ xdfs_sync_fs(struct super_block *sb, int wait)
 	}
 	return 0;
 }
+
+
+static struct export_operations xdfs_export_ops = {
+	.fh_to_dentry = xdfs_fh_to_dentry,
+	.fh_to_parent = xdfs_fh_to_parent,
+	.get_parent = xdfs_get_parent,
+};
+
+
+static struct dentry *
+xdfs_fh_to_dentry(struct super_block *sb, struct fid *fid,
+		int fh_len, int fh_type)
+{
+	xdfs_printk("xdfs_fh_to_dentry called \n");
+	return generic_fh_to_dentry(sb, fid, fh_len, fh_type,
+				    NULL);
+}
+static struct dentry *
+xdfs_fh_to_parent(struct super_block *sb, struct fid *fid,
+		int fh_len, int fh_type)
+{
+	xdfs_printk("xdfs_fn_to_parent called \n");
+	return generic_fh_to_parent(sb, fid, fh_len, fh_type,
+				    NULL);
+}
+struct dentry *
+xdfs_get_parent(struct dentry *child)
+{
+	ino_t ino;
+	int res;
+	xdfs_printk("xdfs_get_parent is called\n");
+	res = xdfs_inode_by_name(d_inode(child), &dotdot_name, &ino);
+	if (res)
+		return ERR_PTR(res);
+
+	return d_obtain_alias(xdfs_iget(child->d_sb, ino));
+} 
+int 
+xdfs_inode_by_name(struct inode *dir, const struct qstr *child, ino_t *ino)
+{
+	struct xdfs_dir_entry *de;
+	struct page *page;
+	void *page_addr;
+	
+	xdfs_printk("xdfs_inode_by_name is called\n");
+	de = xdfs_find_entry(dir, child, &page, &page_addr);
+	if (IS_ERR(de))
+		return PTR_ERR(de);
+
+	*ino = le32_to_cpu(de->inode);
+	xdfs_put_page(page, page_addr);
+
+	xdfs_printk("xdfs_inode_by_name return\n");
+	return 0;
+}
+
+struct xdfs_dir_entry *
+xdfs_find_entry (struct inode *dir,
+			const struct qstr *child, struct page **res_page,
+			void **res_page_addr)
+{
+	const char *name = child->name;
+	int namelen = child->len;
+	unsigned reclen = child->dir_entry_len;
+	unsigned long start, n;
+	unsigned long npages = dir_pages(dir);
+	struct page *page = NULL;
+	struct xdfs_inode_info *ei = XDFS_I(dir);
+	xdfs_dir_entry * de;
+	void *page_addr;
+	unsigned last_byte;
+	xdfs_printk("xdfs_find_entry is called\n");
+
+	if (npages == 0)
+		goto out;
+
+	/* OFFSET_CACHE */
+	*res_page = NULL;
+	*res_page_addr = NULL;
+
+	start = ei->i_dir_start_lookup;
+	if (start >= npages)
+		start = 0;
+	n = start;
+	do {
+		char *kaddr;
+		page = xdfs_get_page(dir, n, 0, &page_addr);
+		if (IS_ERR(page))
+			return ERR_CAST(page);
+
+		kaddr = page_addr;
+		de = (xdfs_dir_entry *) kaddr;
+
+		
+		//xdfs_last_byte(dir,n)
+		last_byte = inode->i_size -( n << PAGE_SHIFT);
+		if(last_byte > PAGE_SIZE){ last_byte = PAGE_SIZE;}
+
+		kaddr += last_byte - reclen;
+		while ((char *) de <= kaddr) {
+			if (de->dir_entry_len == 0) {
+				xdfs_printk("zero-length directory entry\n");
+				xdfs_put_page(page, page_addr);
+				goto out;
+			}
+			if (/* xdfs_match (namelen, name, de)*/(len == de->name_len)&&(de->inode)&&(memcmp(name, de->name, len)))
+					goto found;
+			de = xdfs_next_dir_entry(de);
+		}
+		xdfs_put_page(page, page_addr);
+
+		if (++n >= npages)
+			n = 0;
+		/* next page is past the blocks we've got */
+		if (unlikely(n > (dir->i_blocks >> (PAGE_SHIFT - 9)))) {
+			xdfs_printk("dir %lu size %lld exceeds block count %llu",
+				dir->i_ino, dir->i_size,
+				(unsigned long long)dir->i_blocks);
+			goto out;
+		}
+	} while (n != start);
+out:
+	xdfs_printk("xdfs_find_entry return null !!!\n");
+	return ERR_PTR(-ENOENT);
+
+found:
+	*res_page = page;
+	*res_page_addr = page_addr;
+	ei->i_dir_start_lookup = n;
+	xdfs_printk("xdfs_find_entry found\n");
+	return de;
+}
+
 static struct file_system_type xdfs_fs_type = {
   .owner = THIS_MODULE, 
   .name = "xdfs",
@@ -873,7 +1027,7 @@ bool xdfs_block_dirty_folio(struct address_space *mapping, struct folio *folio)
 	bool ret;
 	xdfs_printk("block_dirty_folio is called\n");
 	ret = block_dirty_folio(mapping,folio);
-	xdfs_printk("block_dirty_folio return\n")
+	xdfs_printk("block_dirty_folio return\n");
 	return ret;
 }
 
@@ -900,8 +1054,8 @@ bool xdfs_block_is_partially_uptodate(struct folio *folio, size_t from, size_t c
 {
 	bool ret;
 	xdfs_printk("block_is_partially_uptodate is called\n");
-	ret = block_is_partially_uptodate(mapping,from,count);
-	xdfs_printk("block_is_partially_uptodate return\n")
+	ret = block_is_partially_uptodate(folio,from,count);
+	xdfs_printk("block_is_partially_uptodate return\n");
 	return ret;
 }
 
@@ -932,10 +1086,11 @@ xdfs_direct_IO(struct kiocb *iocb, struct iov_iter *iter)
 	struct address_space *mapping = file->f_mapping;
 	struct inode *inode = mapping->host;
 	size_t count = iov_iter_count(iter);
+	ssize_t ret;
 	xdfs_printk("xdfs_direct_IO is called \n");	
 
 	ret = blockdev_direct_IO(iocb, inode, iter, xdfs_get_block);
-	xdfs_printk("xdfs_direct_IO return \n")
+	xdfs_printk("xdfs_direct_IO return \n");
 	return ret;
 }
 static int
@@ -944,7 +1099,7 @@ xdfs_write_begin(struct file *file, struct address_space *mapping,
 {
 	int ret;
 	xdfs_printk("xdfs_write_begin is called\n");
-	ret = block_write_begin(mapping, pos, len, pagep, ext2_get_block);
+	ret = block_write_begin(mapping, pos, len, pagep, xdfs_get_block);
 	xdfs_printk("xdfs_write_begin return\n");
 	return ret;
 }
@@ -1028,6 +1183,7 @@ static struct inode_operations xdfs_inode_operations = {
 	.listxattr	    = xdfs_listxattr,
 	.getattr	= xdfs_getattr,
 	.setattr	= xdfs_setattr,
+	.fiemap		= xdfs_fiemap,
     //link : my_link,
     //unlink : my_unlink,
 };
@@ -1169,6 +1325,18 @@ xdfs_setattr(struct user_namespace *mnt_userns, struct dentry *dentry,
 	
 	xdfs_printk("xdfs_setattr return\n");
 	return error;
+}
+
+int 
+xdfs_fiemap(struct inode *inode, struct fiemap_extent_info *fieinfo,
+		u64 start, u64 len)
+{
+	int ret;
+	xdfs_printk("fiemap is called \n");
+	ret = generic_block_fiemap(inode, fieinfo, start, len,
+				    ext2_get_block);
+	xdfs_printk("fiemap return \n");
+	return ret;
 }
 
 static struct file_operations xdfs_file_operations = {
@@ -1399,7 +1567,6 @@ xdfs_readdir(struct file *file, struct dir_context *ctx)
 		
 		last_byte = inode->i_size -( n << PAGE_SHIFT);
 		if(last_byte > PAGE_SIZE){ last_byte = PAGE_SIZE;}
-
 
 		limit = kaddr + last_byte - XDFS_DIR_ENTRY_TOTAL_LEN(1);
 		for ( ;(char*)de <= limit; de = xdfs_next_dir_entry(de)) {
