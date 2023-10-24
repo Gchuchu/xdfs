@@ -219,6 +219,32 @@ static void xdfs_put_super(struct super_block *s);
 static int xdfs_write_super(struct super_block *sb,int wait);
 static int xdfs_statfs(struct dentry *dentry, struct kstatfs * buf);
 
+bool xdfs_block_dirty_folio(struct address_space *mapping, struct folio *folio);
+void xdfs_block_invalidate_folio(struct folio *folio, size_t offset, size_t length);
+int xdfs_buffer_migrate_folio(struct address_space *mapping,
+		struct folio *dst, struct folio *src, enum migrate_mode mode);
+bool xdfs_block_is_partially_uptodate(struct folio *folio, size_t from, size_t count);
+int xdfs_generic_error_remove_page(struct address_space *mapping, struct page *page);
+static int xdfs_writepages(struct address_space *mapping, struct writeback_control *wbc);
+static ssize_t xdfs_direct_IO(struct kiocb *iocb, struct iov_iter *iter);
+static int xdfs_write_begin(struct file *file, struct address_space *mapping,
+		loff_t pos, unsigned len, struct page **pagep, void **fsdata);
+static int xdfs_write_end(struct file *file, struct address_space *mapping,
+			loff_t pos, unsigned len, unsigned copied,
+			struct page *page, void *fsdata);
+static void xdfs_readahead(struct readahead_control *rac);
+static int xdfs_read_folio(struct file *file, struct folio *folio);
+static sector_t xdfs_bmap(struct address_space *mapping, sector_t block);
+
+int xdfs_get_block(struct inode *inode, sector_t iblock,
+		struct buffer_head *bh_result, int create);
+
+static int xdfs_get_blocks(struct inode *inode,
+			   sector_t iblock, unsigned long maxblocks,
+			   struct buffer_head *bh_result,
+			   int create);
+
+
 static ssize_t xdfs_listxattr(struct dentry *dentry, char *buffer, size_t buffer_size);
 int xdfs_getattr(struct user_namespace *mnt_userns, const struct path *path,
 		 struct kstat *stat, u32 request_mask, unsigned int query_flags);
@@ -435,17 +461,17 @@ xdfs_iget(struct super_block *sb, unsigned long ino)
 	printk("XDFS: xdfs_inode->block_size_in_bit   %d",raw_inode->block_size_in_bit);
 	printk("XDFS: xdfs_inode->addr                %p",raw_inode->addr);
 	printk("XDFS: xdfs_inode->inode_count.counter %d",raw_inode->inode_count.counter);
-	printk("XDFS: inode->i_nlink =   %d",inod->i_nlink);
+	printk("XDFS: inode->i_nlink =   			  %d",inod->i_nlink);
 	
 	printk("XDFS: inode->i_sb->s_dev         %ld",inod->i_sb->s_dev);
 	printk("XDFS: inode->i_mode              %ld",inod->i_mode);
 	printk("XDFS: inode->i_ino               %ld",inod->i_ino);
-	printk("XDFS: inode->i_nlink             %d", inod->i_nink);
+	printk("XDFS: inode->i_nlink             %d", inod->i_nlink);
 	printk("XDFS: inode->i_state             %ld",inod->i_state);
 	printk("XDFS: inode->i_atime             %d", inod->i_atime.tv_sec);
 	printk("XDFS: inode->i_ctime             %p", inod->i_ctime.tv_sec);
 	printk("XDFS: inode->i_mtime             %d", inod->i_mtime.tv_sec);
-	printk("XDFS: inode->i_nlink =   %d",inod->i_nlink);
+	printk("XDFS: inode->i_nlink =   		 %d", inod->i_nlink);
 #endif
 	
 	inod->i_mode = raw_inode->mode;
@@ -824,34 +850,129 @@ xdfs_statfs(struct dentry *dentry, struct kstatfs * buf)
 
 static struct address_space_operations xdfs_aops = {
     //是否需要
-    .readpages = xdfs_readpages,
-    .readpage = xdfs_readpage,
-    .writepage = xdfs_writepage,
+    .dirty_folio		= xdfs_block_dirty_folio,
+	.invalidate_folio	= xdfs_block_invalidate_folio,
+	.read_folio		= xdfs_read_folio,
+	.readahead		= xdfs_readahead,
+	.write_begin		= xdfs_write_begin,
+	.write_end		= xdfs_write_end,
+	.bmap			= xdfs_bmap,
+	.direct_IO		= xdfs_direct_IO,
+	.writepages		= xdfs_writepages,
+	.migrate_folio		= xdfs_buffer_migrate_folio,
+	.is_partially_uptodate	= xdfs_block_is_partially_uptodate,
+	.error_remove_page	= xdfs_generic_error_remove_page,
     // .sync_page = block_sync_page,
     // .prepare_write = my_prepare_write,
     // .commit_write = generic_commit_write,
     // .bmap = my_bmap,
 };
 
-
-static int xdfs_writepage(struct page *page, struct writeback_control *wbc)
+bool xdfs_block_dirty_folio(struct address_space *mapping, struct folio *folio)
 {
-	xdfs_printk("xdfs_writepage is called and return \n");
-	return block_write_full_page(page, xdfs_get_block, wbc);
+	bool ret;
+	xdfs_printk("block_dirty_folio is called\n");
+	ret = block_dirty_folio(mapping,folio);
+	xdfs_printk("block_dirty_folio return\n")
+	return ret;
 }
+
+void xdfs_block_invalidate_folio(struct folio *folio, size_t offset, size_t length)
+{
+	xdfs_printk("block_invalidate_folio is called \n");
+	block_invalidate_folio(folio,offset,length);
+	xdfs_printk("block_invalidate_folio return \n");
+}
+
+
+int xdfs_buffer_migrate_folio(struct address_space *mapping,
+		struct folio *dst, struct folio *src, enum migrate_mode mode)
+{
+	int ret;
+	xdfs_printk("buffer_migrate_folio is called\n");
+	ret = buffer_migrate_folio(mapping, dst, src, mode);
+	xdfs_printk("buffer_migrate_folio return\n");
+	return ret;
+}
+
+
+bool xdfs_block_is_partially_uptodate(struct folio *folio, size_t from, size_t count)
+{
+	bool ret;
+	xdfs_printk("block_is_partially_uptodate is called\n");
+	ret = block_is_partially_uptodate(mapping,from,count);
+	xdfs_printk("block_is_partially_uptodate return\n")
+	return ret;
+}
+
+
+int xdfs_generic_error_remove_page(struct address_space *mapping, struct page *page)
+{
+	int ret;
+	xdfs_printk("generic_error_remove_page is called\n");
+	ret = generic_error_remove_page(mapping, page);
+	xdfs_printk("generic_error_remove_page return\n");
+	return ret;
+}
+
 
 static int
-xdfs_readpages(struct file *file, struct address_space *mapping,
-		struct list_head *pages, unsigned nr_pages)
+xdfs_writepages(struct address_space *mapping, struct writeback_control *wbc)
 {
-	xdfs_printk("xdfs_readpages is called and return \n");
-	return mpage_readpages(mapping, pages, nr_pages, xdfs_get_block);
+	int ret;
+	xdfs_printk("writepages is called \n");
+	ret = mpage_writepages(mapping, wbc, xdfs_get_block);
+	xdfs_printk("writepages return \n");
+	return ret;
+}
+static ssize_t
+xdfs_direct_IO(struct kiocb *iocb, struct iov_iter *iter)
+{
+	struct file *file = iocb->ki_filp;
+	struct address_space *mapping = file->f_mapping;
+	struct inode *inode = mapping->host;
+	size_t count = iov_iter_count(iter);
+	xdfs_printk("xdfs_direct_IO is called \n");	
+
+	ret = blockdev_direct_IO(iocb, inode, iter, xdfs_get_block);
+	xdfs_printk("xdfs_direct_IO return \n")
+	return ret;
+}
+static int
+xdfs_write_begin(struct file *file, struct address_space *mapping,
+		loff_t pos, unsigned len, struct page **pagep, void **fsdata)
+{
+	int ret;
+	xdfs_printk("xdfs_write_begin is called\n");
+	ret = block_write_begin(mapping, pos, len, pagep, ext2_get_block);
+	xdfs_printk("xdfs_write_begin return\n");
+	return ret;
+}
+static int 
+xdfs_write_end(struct file *file, struct address_space *mapping,
+			loff_t pos, unsigned len, unsigned copied,
+			struct page *page, void *fsdata)
+{
+	int ret;
+	xdfs_printk("xdfs_write_end is called\n");
+	ret = generic_write_end(file, mapping, pos, len, copied, page, fsdata);
+	xdfs_printk("xdfs_write_end return\n");
+	return ret;
 }
 
-static int xdfs_readpage(struct file *file, struct page *page)
+static void xdfs_readahead(struct readahead_control *rac)
 {
-	xdfs_printk("xdfs_readpage is called and return \n");
-	return mpage_readpage(page, xdfs_get_block);
+	xdfs_printk("readahead is called \n");
+	mpage_readahead(rac, xdfs_get_block);
+	xdfs_printk("readahead return \n");
+}
+static int xdfs_read_folio(struct file *file, struct folio *folio)
+{
+	int ret;
+	xdfs_printk("read_folio is called\n");
+	ret = mpage_read_folio(folio, xdfs_get_block);
+	xdfs_printk("read_folio return\n");
+	return ret;
 }
 
 static sector_t xdfs_bmap(struct address_space *mapping, sector_t block)
@@ -870,8 +991,8 @@ xdfs_get_block(struct inode *inode, sector_t iblock,
 
 	xdfs_printk("xdfs_get_block is called \n");
 
-	ret = xdfs_get_blocks(inode, iblock, max_blocks, &bno, &new, &boundary,
-			create);
+	ret = xdfs_get_blocks(inode, iblock, max_blocks,
+			      bh_result, create);
 
 	if (ret <= 0)
 		return ret;
@@ -1548,10 +1669,10 @@ xdfs_setsize(struct inode *inode, loff_t newsize)
 
 	inode_dio_wait(inode);
 
-	// error = block_truncate_page(inode->i_mapping,
-	// 		newsize, ext2_get_block);
-	// if (error)
-	// 	return error;
+	error = block_truncate_page(inode->i_mapping,
+			newsize, xdfs_get_block);
+	if (error)
+		return error;
 
 	filemap_invalidate_lock(inode->i_mapping);
 	truncate_setsize(inode, newsize);
