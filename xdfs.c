@@ -174,12 +174,21 @@ struct xdfs_inode_info{
 
 struct xdfs_superblock {
     UINT32        s_magic;
-    UINT32        s_state;	/* The superblock state : XDFS_DIRTY or XDFS_CLEAN */
-    UINT32        s_nifree;	/* The num of free inode */
-    UINT32        s_inode;	/* The number of FIB0 block */
-    UINT32        s_nbfree;	/* The num of free blk */
-    UINT32        s_block;	/* The num of blocks */
-	struct buffer_head* bh;
+    UINT32        s_state;			/* The superblock state : XDFS_DIRTY or XDFS_CLEAN */
+    UINT32        s_nifree;			/* The num of free inode */
+    UINT32        s_inode;			/* The number of FIB0 block */
+    UINT32        s_nbfree;			/* The num of free blk */
+    UINT32        s_block;			/* The num of blocks */
+	UINT16		  s_def_resuid;		/* Default uid for reserved blocks */
+	UINT16		  s_def_resgid;		/* Default gid for reserved blocks */
+};
+
+struct xdfs_superblock_info {
+	unsigned long  s_mount_opt;
+	kuid_t s_resuid;
+	kgid_t s_resgid;
+	struct buffer_head * sb_bh;		/* Buffer containing the super block */
+	struct xdfs_super_block * xdfs_sb;	/* Pointer to the super block in the buffer */
 };
 #define XDFS_DIR_ENTRY_BONDRY (4)
 #define XDFS_DIR_ENTRY_MASK (XDFS_DIR_ENTRY_BONDRY-1)
@@ -194,6 +203,15 @@ struct xdfs_dir_entry{
 	UINT8 file_type; 
 	char name[255]; 
 };
+
+
+
+struct xdfs_mount_options {
+	unsigned long s_mount_opt;
+	kuid_t s_resuid;
+	kgid_t s_resgid;
+};
+
 
 static struct super_operations 		   xdfs_sops;
 static struct address_space_operations xdfs_aops;
@@ -332,12 +350,14 @@ xdfs_fill_super(struct super_block *sb, void *data, int silent)
 	struct inode *inode_rt;
 	dev_t  dev; 
 	struct block_device * bdev;
+	struct xdfs_mount_options * opts;
+
 	/* struct dax_device *dax_dev = blkdev_get_by_dev(sb->s_bdev); */
 #ifdef XDFS_DEBUG
 	printk("XDFS: xdfs_fill_super start(%p, %p, %d)\n ", sb, data, silent);
 #endif
 	/* alloc space */
-	xdfs_sb = kzalloc(sizeof(struct xdfs_superblock), GFP_KERNEL);
+    sb->s_fs_info = kzalloc(sizeof(struct xdfs_superblock), GFP_KERNEL);
 
 	/* bdev problem doesn't be solved */
 	bdev = sb->s_bdev;
@@ -382,6 +402,13 @@ xdfs_fill_super(struct super_block *sb, void *data, int silent)
 	
 	sb->s_flags |= SB_POSIXACL;
 	// sb->s_iflags |= SB_I_CGROUPWB;
+
+
+	opts.s_resuid = make_kuid(&init_user_ns, le16_to_cpu(xdfs_sb->s_def_resuid));
+	opts.s_resgid = make_kgid(&init_user_ns, le16_to_cpu(xdfs_sb->s_def_resgid));
+	
+	set_opt(opts.s_mount_opt, RESERVATION);
+
 
 #ifdef XDFS_DEBUG
 	printk("XDFS: op starting\n");
@@ -719,7 +746,7 @@ xdfs_find_entry (struct inode *dir,
 {
 	const char *name = child->name;
 	int namelen = child->len;
-	unsigned reclen = namelen+8;
+	unsigned reclen = XDFS_DIR_ENTRY_TOTAL_LEN(namelen);
 	unsigned long start, n;
 	unsigned long npages = dir_pages(dir);
 	struct page *page = NULL;

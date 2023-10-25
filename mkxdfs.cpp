@@ -155,16 +155,17 @@ struct xdfs_dir_entry{
 #define XDFS_ID_STRING "xdfs"	/*　文件系统的ID　*/
 
 
+
 struct xdfs_superblock {
     UINT32        s_magic;
-    UINT32        s_state;	/* The superblock state : XDFS_DIRTY or XDFS_CLEAN */
-    UINT32        s_nifree;	/* The num of free inode */
-    UINT32        s_inode;	/* The number of FIB0 block */
-    UINT32        s_nbfree;	/* The num of free blk */
-    UINT32        s_block;	/* The num of blocks */
-	struct buffer_head* bh;
+    UINT32        s_state;			/* The superblock state : XDFS_DIRTY or XDFS_CLEAN */
+    UINT32        s_nifree;			/* The num of free inode */
+    UINT32        s_inode;			/* The number of FIB0 block */
+    UINT32        s_nbfree;			/* The num of free blk */
+    UINT32        s_block;			/* The num of blocks */
+	UINT16		  s_def_resuid;		/* Default uid for reserved blocks */
+	UINT16		  s_def_resgid;		/* Default gid for reserved blocks */
 };
-
 /*************************DEFINE_END*************************/ 
 
 /**
