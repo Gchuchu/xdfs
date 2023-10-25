@@ -188,7 +188,7 @@ struct xdfs_superblock_info {
 	kuid_t s_resuid;
 	kgid_t s_resgid;
 	struct buffer_head * sb_bh;		/* Buffer containing the super block */
-	struct xdfs_super_block * xdfs_sb;	/* Pointer to the super block in the buffer */
+	struct xdfs_superblock * xdfs_sb;	/* Pointer to the super block in the buffer */
 };
 #define XDFS_DIR_ENTRY_BONDRY (4)
 #define XDFS_DIR_ENTRY_MASK (XDFS_DIR_ENTRY_BONDRY-1)
@@ -266,6 +266,9 @@ static int xdfs_get_blocks(struct inode *inode,
 			   struct buffer_head *bh_result,
 			   int create);
 
+
+static struct dentry *xdfs_lookup(struct inode * dir, struct dentry *dentry, unsigned int flags);
+int xdfs_inode_by_name(struct inode *dir, const struct qstr *child, ino_t *ino);
 
 static ssize_t xdfs_listxattr(struct dentry *dentry, char *buffer, size_t buffer_size);
 int xdfs_getattr(struct user_namespace *mnt_userns, const struct path *path,
@@ -347,17 +350,18 @@ xdfs_fill_super(struct super_block *sb, void *data, int silent)
 
 	struct buffer_head *bh;
 	struct xdfs_superblock *xdfs_sb;
+	struct xdfs_superblock_info *xdfs_sb_info;
 	struct inode *inode_rt;
 	dev_t  dev; 
 	struct block_device * bdev;
-	struct xdfs_mount_options * opts;
+	struct xdfs_mount_options opts;
 
 	/* struct dax_device *dax_dev = blkdev_get_by_dev(sb->s_bdev); */
 #ifdef XDFS_DEBUG
 	printk("XDFS: xdfs_fill_super start(%p, %p, %d)\n ", sb, data, silent);
 #endif
 	/* alloc space */
-    sb->s_fs_info = kzalloc(sizeof(struct xdfs_superblock), GFP_KERNEL);
+    xdfs_sb_info = kzalloc(sizeof(struct xdfs_superblock_info), GFP_KERNEL);
 
 	/* bdev problem doesn't be solved */
 	bdev = sb->s_bdev;
@@ -385,9 +389,10 @@ xdfs_fill_super(struct super_block *sb, void *data, int silent)
 	printk("XDFS: xdfs_superblock-> =s_nbfree %d\n",xdfs_sb->s_nbfree);
 	printk("XDFS: xdfs_superblock-> =s_nifree %d\n",xdfs_sb->s_nifree);
 	printk("XDFS: xdfs_superblock-> =s_state  %d\n",xdfs_sb->s_state);
-#endif
-	xdfs_sb->bh = bh;
 	msleep(1000);
+#endif
+	xdfs_sb_info->xdfs_sb = xdfs_sb;
+	xdfs_sb_info->sb_bh = bh;
 
 	/* exam the data read from the device and written by mkfs.c */
     sb->s_magic = XDFS_MAGIC;
@@ -398,7 +403,7 @@ xdfs_fill_super(struct super_block *sb, void *data, int silent)
 	sb->s_max_links = INODE_NUMS;
 	sb->s_time_min = S32_MIN;
 	sb->s_time_max = S32_MAX;
-    sb->s_fs_info = xdfs_sb;
+    sb->s_fs_info = xdfs_sb_info;
 	
 	sb->s_flags |= SB_POSIXACL;
 	// sb->s_iflags |= SB_I_CGROUPWB;
@@ -406,8 +411,12 @@ xdfs_fill_super(struct super_block *sb, void *data, int silent)
 
 	opts.s_resuid = make_kuid(&init_user_ns, le16_to_cpu(xdfs_sb->s_def_resuid));
 	opts.s_resgid = make_kgid(&init_user_ns, le16_to_cpu(xdfs_sb->s_def_resgid));
+	// set_opt(opts.s_mount_opt, RESERVATION);
+
 	
-	set_opt(opts.s_mount_opt, RESERVATION);
+	xdfs_sb_info->s_mount_opt = opts.s_mount_opt;
+	xdfs_sb_info->s_resuid = opts.s_resuid;
+	xdfs_sb_info->s_resgid = opts.s_resgid;
 
 
 #ifdef XDFS_DEBUG
@@ -487,7 +496,7 @@ xdfs_iget(struct super_block *sb, unsigned long ino)
 		return ERR_PTR(-ENOMEM);
 
 #ifdef XDFS_DEBUG
-	printk("XDFS: inode->i_state            %x and I_NEW = %x",inod->i_state,I_NEW);
+	printk("XDFS: inode->i_state            %lx and I_NEW = %x",inod->i_state,I_NEW);
 #endif
 
 	if (!(inod->i_state & I_NEW))      
@@ -501,7 +510,7 @@ xdfs_iget(struct super_block *sb, unsigned long ino)
 	raw_inode = xdfs_get_inode(inod->i_sb, ino, &bh);
 	
 #ifdef XDFS_DEBUG
-	printk("XDFS: xdfs_inode->mode                %ld",raw_inode->mode);
+	printk("XDFS: xdfs_inode->mode                %d",raw_inode->mode);
 	printk("XDFS: xdfs_inode->inode_no            %ld",raw_inode->inode_no);
 	printk("XDFS: xdfs_inode->num_link            %d",raw_inode->num_link);
 	printk("XDFS: xdfs_inode->state               %ld",raw_inode->state);
@@ -510,14 +519,14 @@ xdfs_iget(struct super_block *sb, unsigned long ino)
 	printk("XDFS: xdfs_inode->inode_count.counter %d",raw_inode->inode_count.counter);
 	printk("XDFS: inode->i_nlink =   			  %d",inod->i_nlink);
 	
-	printk("XDFS: inode->i_sb->s_dev         %ld",inod->i_sb->s_dev);
-	printk("XDFS: inode->i_mode              %ld",inod->i_mode);
+	printk("XDFS: inode->i_sb->s_dev         %d",inod->i_sb->s_dev);
+	printk("XDFS: inode->i_mode              %d",inod->i_mode);
 	printk("XDFS: inode->i_ino               %ld",inod->i_ino);
 	printk("XDFS: inode->i_nlink             %d", inod->i_nlink);
 	printk("XDFS: inode->i_state             %ld",inod->i_state);
-	printk("XDFS: inode->i_atime             %d", inod->i_atime.tv_sec);
-	printk("XDFS: inode->i_ctime             %p", inod->i_ctime.tv_sec);
-	printk("XDFS: inode->i_mtime             %d", inod->i_mtime.tv_sec);
+	printk("XDFS: inode->i_atime             %lld", inod->i_atime.tv_sec);
+	printk("XDFS: inode->i_ctime             %lld", inod->i_ctime.tv_sec);
+	printk("XDFS: inode->i_mtime             %lld", inod->i_mtime.tv_sec);
 	printk("XDFS: inode->i_nlink =   		 %d", inod->i_nlink);
 #endif
 	
@@ -666,7 +675,7 @@ xdfs_sync_fs(struct super_block *sb, int wait)
 #ifdef XDFS_DEBUG
 	printk("XDFS: xdfs_sync_fs(%p) start \n", sb);
 #endif
-	bh = ((struct xdfs_superblock*)(sb->s_fs_info))->bh;
+	bh = ((struct xdfs_superblock_info*)(sb->s_fs_info))->sb_bh;
 	
 	/* Is superblock read only? */
 	if(!sb_rdonly(sb))
@@ -989,18 +998,18 @@ xdfs_evict_inode(struct inode * inode)
 	return;
 }
 static void 
-xdfs_put_super(struct super_block *s)
+xdfs_put_super(struct super_block *sb)
 {
 	struct buffer_head *bh;
 #ifdef XDFS_DEBUG
-	printk("XDFS: xdfs_put_super(%p) is called\n",s);
+	printk("XDFS: xdfs_put_super(%p) is called\n",sb);
 #endif
 
-	bh = ((struct xdfs_superblock*)(s->s_fs_info))->bh;
+	bh = ((struct xdfs_superblock_info*)(sb->s_fs_info))->sb_bh;
 	brelse(bh);
 	
 #ifdef XDFS_DEBUG
-	printk("XDFS: xdfs_put_super(%p) return\n",s);
+	printk("XDFS: xdfs_put_super(%p) return\n",sb);
 #endif
 }
 static int 
@@ -1011,7 +1020,7 @@ xdfs_write_super(struct super_block *sb,int wait)
 	printk("XDFS: xdfs_write_super(%p) is called\n",sb);
 #endif
 
-	bh = ((struct xdfs_superblock*)(sb->s_fs_info))->bh;
+	bh = ((struct xdfs_superblock_info*)(sb->s_fs_info))->sb_bh;
 	mark_buffer_dirty(bh);
 
 #ifdef XDFS_DEBUG
@@ -1112,7 +1121,7 @@ xdfs_direct_IO(struct kiocb *iocb, struct iov_iter *iter)
 	struct file *file = iocb->ki_filp;
 	struct address_space *mapping = file->f_mapping;
 	struct inode *inode = mapping->host;
-	size_t count = iov_iter_count(iter);
+	// size_t count = iov_iter_count(iter);
 	ssize_t ret;
 	xdfs_printk("xdfs_direct_IO is called \n");	
 
@@ -1192,9 +1201,9 @@ xdfs_get_blocks(struct inode *inode,
 			   struct buffer_head *bh_result,
 			   int create)
 {
-	xdfs_printk("xdfs_get_block is called \n");
 	struct xdfs_inode* xd_inode = (struct xdfs_inode*)inode->i_private;
 	struct super_block *sb = inode->i_sb;
+	xdfs_printk("xdfs_get_block is called \n");
 
 	iblock = xd_inode->file_blockno;
 	maxblocks = xd_inode->using_block_num;
@@ -1218,11 +1227,11 @@ static struct inode_operations xdfs_inode_operations = {
 static ssize_t
 xdfs_listxattr(struct dentry *dentry, char *buffer, size_t buffer_size)
 {
-	struct inode *inode = dentry->d_inode;
+	// struct inode *inode = dentry->d_inode;
 	struct buffer_head *bh = NULL;
-	char *end;
-	size_t rest = buffer_size;
-	int error;
+	// char *end;
+	// size_t rest = buffer_size;
+	int error=0;
 
 	xdfs_printk("xdfs_listxattr is called\n");
 
@@ -1284,11 +1293,11 @@ xdfs_listxattr(struct dentry *dentry, char *buffer, size_t buffer_size)
 
 	xdfs_printk("xdfs_listxattr return\n");
 
-cleanup:
+// cleanup:
 	brelse(bh);
 	// up_read(&XDFS_I(inode)->xattr_sem);
 
-	xdfs_printk("xdfs_listxattr return error !!!\n");
+	xdfs_printk("xdfs_listxattr return and brealse\n");
 	
 	return error;
 }
@@ -1309,18 +1318,18 @@ xdfs_getattr(struct user_namespace *mnt_userns, const struct path *path,
 			STATX_ATTR_NODUMP);
 	generic_fillattr(&init_user_ns, inode, stat);
 	printk("%x stat->dev = inode->i_sb->s_dev",stat->dev);
-	printk("%x stat->ino = inode->i_ino",stat->ino);
+	printk("%llx stat->ino = inode->i_ino",stat->ino);
 	printk("%x stat->mode = inode->i_mode",stat->mode);
 	printk("%x stat->nlink = inode->i_nlink",stat->nlink);
-	printk("%x stat->uid = vfsuid_into_kuid(vfsuid)",stat->uid);
-	printk("%x stat->gid = vfsgid_into_kgid(vfsgid)",stat->gid);
+	printk("%llx stat->uid = vfsuid_into_kuid(vfsuid)",stat->uid);
+	printk("%llx stat->gid = vfsgid_into_kgid(vfsgid)",stat->gid);
 	printk("%x stat->rdev = inode->i_rdev",stat->rdev);
-	printk("%x stat->size = i_size_read(inode)",stat->size);
-	printk("%x stat->atime = inode->i_atime",stat->atime);
-	printk("%x stat->mtime = inode->i_mtime",stat->mtime);
-	printk("%x stat->ctime = inode->i_ctime",stat->ctime);
+	printk("%llx stat->size = i_size_read(inode)",stat->size);
+	printk("%llx stat->atime = inode->i_atime",stat->atime);
+	printk("%llx stat->mtime = inode->i_mtime",stat->mtime);
+	printk("%llx stat->ctime = inode->i_ctime",stat->ctime);
 	printk("%x stat->blksize = i_blocksize(inode)",stat->blksize);
-	printk("%x stat->blocks = inode->i_blocks",stat->blocks);
+	printk("%llx stat->blocks = inode->i_blocks",stat->blocks);
 	xdfs_printk("xdfs_getattr return\n");
 	return 0;
 }
@@ -1485,7 +1494,7 @@ xdfs_file_mmap(struct file *file, struct vm_area_struct *vma)
 static int 
 xdfs_release_file (struct inode * inode, struct file * filp)
 {
-	int error;
+	// int error;
 #ifdef XDFS_DEBUG
 	printk("XDFS: release_file is called\n");
 #endif
@@ -1665,7 +1674,7 @@ static int xdfs_fsync(struct file *file, loff_t start, loff_t end, int datasync)
 }
 static struct inode_operations xdfs_inode_dir_operations = {
 	.create		    = xdfs_dir_create,
-	// .lookup		    = xdfs_dir_lookup,
+	.lookup		    = xdfs_dir_lookup,
 	// .link		    = xdfs_dir_link,
 	// .unlink		    = xdfs_dir_unlink,
 	// .symlink	    = xdfs_dir_symlink,
@@ -1697,14 +1706,62 @@ xdfs_dir_create (struct user_namespace * mnt_userns,
 	return 0;
 }
 
+
+static struct dentry *
+xdfs_lookup(struct inode * dir, struct dentry *dentry, unsigned int flags)
+{
+	struct inode * inode;
+	ino_t ino;
+	int res;
+	
+	xdfs_printk("lookup is called \n");
+
+	if (dentry->d_name.len > EXT2_NAME_LEN)
+		return ERR_PTR(-ENAMETOOLONG);
+
+	res = xdfs_inode_by_name(dir, &dentry->d_name, &ino);
+	if (res) {
+		if (res != -ENOENT)
+			return ERR_PTR(res);
+		inode = NULL;
+	} else {
+		inode = xdfs_iget(dir->i_sb, ino);
+		if (inode == ERR_PTR(-ESTALE)) {
+			xdfs_printk("deleted inode referenced: %lu",
+					(unsigned long) ino);
+			return ERR_PTR(-EIO);
+		}
+	}
+	xdfs_printk("lookup return  \n");
+	return d_splice_alias(inode, dentry);
+}
+
+int 
+xdfs_inode_by_name(struct inode *dir, const struct qstr *child, ino_t *ino)
+{
+	struct xdfs_dir_entry *de;
+	struct page *page;
+	void *page_addr;
+	
+	xdfs_printk("inode_by_name is called  \n");
+	de = xdfs_find_entry(dir, child, &page, &page_addr);
+	if (IS_ERR(de))
+		return PTR_ERR(de);
+
+	*ino = le32_to_cpu(de->inode);
+	xdfs_put_page(page, page_addr);
+	xdfs_printk("inode_by_name return \n");
+	return 0;
+}
+
 static ssize_t
 xdfs_dir_listxattr(struct dentry *dentry, char *buffer, size_t buffer_size)
 {
-	struct inode *inode = dentry->d_inode;
+	// struct inode *inode = dentry->d_inode;
 	struct buffer_head *bh = NULL;
-	char *end;
-	size_t rest = buffer_size;
-	int error;
+	// char *end;
+	// size_t rest = buffer_size;
+	int error=0;
 
 	xdfs_printk("xdfs_dir_listxattr is called\n");
 
@@ -1766,11 +1823,11 @@ xdfs_dir_listxattr(struct dentry *dentry, char *buffer, size_t buffer_size)
 
 	xdfs_printk("xdfs_dir_listxattr return\n");
 
-cleanup:
+// cleanup:
 	brelse(bh);
 	// up_read(&XDFS_I(inode)->xattr_sem);
 
-	xdfs_printk("xdfs_dir_listxattr return error !!!\n");
+	xdfs_printk("xdfs_dir_listxattr return\n");
 	
 	return error;
 }
@@ -1792,18 +1849,18 @@ xdfs_dir_getattr(struct user_namespace *mnt_userns, const struct path *path,
 			STATX_ATTR_NODUMP);
 	generic_fillattr(&init_user_ns, inode, stat);
 	printk("%x stat->dev = inode->i_sb->s_dev",stat->dev);
-	printk("%x stat->ino = inode->i_ino",stat->ino);
+	printk("%llx stat->ino = inode->i_ino",stat->ino);
 	printk("%x stat->mode = inode->i_mode",stat->mode);
 	printk("%x stat->nlink = inode->i_nlink",stat->nlink);
-	printk("%x stat->uid = vfsuid_into_kuid(vfsuid)",stat->uid);
-	printk("%x stat->gid = vfsgid_into_kgid(vfsgid)",stat->gid);
+	printk("%llx stat->uid = vfsuid_into_kuid(vfsuid)",stat->uid);
+	printk("%llx stat->gid = vfsgid_into_kgid(vfsgid)",stat->gid);
 	printk("%x stat->rdev = inode->i_rdev",stat->rdev);
 	printk("%x stat->size = i_size_read(inode)",stat->size);
-	printk("%x stat->atime = inode->i_atime",stat->atime);
-	printk("%x stat->mtime = inode->i_mtime",stat->mtime);
-	printk("%x stat->ctime = inode->i_ctime",stat->ctime);
+	printk("%llx stat->atime = inode->i_atime",stat->atime);
+	printk("%llx stat->mtime = inode->i_mtime",stat->mtime);
+	printk("%llx stat->ctime = inode->i_ctime",stat->ctime);
 	printk("%x stat->blksize = i_blocksize(inode)",stat->blksize);
-	printk("%x stat->blocks = inode->i_blocks",stat->blocks);
+	printk("%llx stat->blocks = inode->i_blocks",stat->blocks);
 	xdfs_printk("xdfs_dir_getattr return\n");
 	return 0;
 }
