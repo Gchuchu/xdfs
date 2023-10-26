@@ -128,14 +128,15 @@ struct xdfs_inode
     atomic_t inode_count;					/* Inode reference count  */
 
 };
-
+#define XDFS_NAME_LEN (255)
 struct xdfs_dir_entry{
 	UINT32 inode_no;
 	UINT16 dir_entry_len; 
 	UINT8 name_len; 
 	UINT8 file_type; 
-	char name[255]; 
+	char name[XDFS_NAME_LEN]; 
 };
+
 
 /*************************INODE_LOG_DEFINE*****************/
 
@@ -583,10 +584,10 @@ printf("GLOBAL_INFO1 END\n");
 printf("DATA_SPACE START\n");
 
 	lseek(devfd, DS_BLKNO*BLKSIZE, SEEK_SET);
-	char *a = (char*)malloc((SB_BLKNO-DS_BLKNO)*BLKSIZE);
-	memset(a,0,(SB_BLKNO-DS_BLKNO)*BLKSIZE);
-	write(devfd, a, (SB_BLKNO-DS_BLKNO)*BLKSIZE);
-	free(a);
+	// char *a = (char*)malloc((SB_BLKNO-DS_BLKNO)*BLKSIZE);
+	// memset(a,0,(SB_BLKNO-DS_BLKNO)*BLKSIZE);
+	// write(devfd, a, (SB_BLKNO-DS_BLKNO)*BLKSIZE);
+	// free(a);
 
 	struct xdfs_dir_entry* de;
 	const char *str = "what";
@@ -594,13 +595,13 @@ printf("DATA_SPACE START\n");
 	de = (struct xdfs_dir_entry *)malloc(sizeof(struct xdfs_dir_entry));
 	de->file_type = FT_DIR;
 	strcpy(de->name,str);
-	de->inode_no = XDFS_ROOT_INO;
+	de->inode_no = 3;
 	de->name_len = name_len;
 	de->dir_entry_len = sizeof(de);
 	if (de == NULL)
     	return (ERROR);
-	memset(de, 0x00, sizeof(struct xdfs_dir_entry));	/*缓冲区置0x00*/
 	write(devfd, de, sizeof(struct xdfs_dir_entry));
+	// memset(de, 0x00, sizeof(struct xdfs_dir_entry));	/*缓冲区置0x00*/
 	free(de);
 
 printf("DATA_SPACE END\n");
