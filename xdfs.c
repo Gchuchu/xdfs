@@ -1202,17 +1202,115 @@ xdfs_get_blocks(struct inode *inode,
 {
 	struct xdfs_inode* xd_inode = (struct xdfs_inode*)inode->i_private;
 	struct super_block *sb = inode->i_sb;
+	int err = -EIO;
+	int offsets[4];
+	Indirect chain[4];
+	Indirect *partial;
 	xdfs_printk("xdfs_get_block is called \n");
 
-	iblock = xd_inode->file_blockno;
-	maxblocks = xd_inode->using_block_num;
-	bh_result = sb_bread(sb,xd_inode->file_blockno);
+	xdfs_printk("xdfs_get_block inode_no is %ld \n",xd_inode->inode_no);
+	xdfs_printk("xdfs_get_block file_blkno is %ld \n",xd_inode->file_blockno);
+	xdfs_printk("xdfs_get_block using_block_num is %ld \n",xd_inode->using_block_num);
+	iblock = xdfs_inode->inode_no;
+	maxblocks = xdfs_inode->using_block_num;
+	bh = sb_bread(sb,iblock);
+	
+#ifdef XDFS_DEBUG
+		printk("------------------------\n");
+		for(int i=0;i<512;i++)
+		{
+				printk("%x %x %x %x %x %x %x %x|%d line\n",*((char*)(bh->b_data)+i*8+0),*((char*)(bh->b_data)+i*8+1),*((char*)(bh->b_data)+i*8+2),*((char*)(bh->b_data)+i*8+3),*((char*)(bh->b_data)+i*8+4),*((char*)(bh->b_data)+i*8+5),*((char*)(bh->b_data)+i*8+6),*((char*)(bh->b_data)+i*8+7),i);
+
+		}
+		printk("------------------------\n");
+#endif
+
 
 	map_bh(bh_result, inode->i_sb, iblock);
 
 	xdfs_printk("xdfs_get_block return \n");
-	return 0;
+	return err;
 }
+
+static int 
+xdfs_block_to_path(struct inode * inode,long i_block,int offset[4],int *boundary)
+{
+	int ptrs = inode->i_sb->s_blocksize;
+	int ptrs_bits = inode->i_sb->s_blocksize_bits;
+	const long direct_blocks = BLKSIZE_BITS,
+	indirect_blocks = ptrs,
+	double_blocks = (1<< (ptrs_bits*2));
+
+	int n=0;
+	int final =0;
+	if(i_block<0)
+	{
+		xdfs_printk("block_to_path error i_block<0\n");
+	}
+	else if(i_block<direct_blocks){
+		offset[n++] = i_block;
+		final = direct_blocks;
+	}
+	else if(i_block-direct_blocks<indirect_blocks){
+		offset[n++] = BLKSIZE_BITS;
+		offset[n++] = i_block;
+		final = ptrs;
+	}
+	else if(i_block-indirect_blocks<double_blocks){
+		offset[n++] = BLKSIZE_BITS+1;
+		offset[n++] = i_block >> ptrs_bits;
+		offset[n++] = i_block &(ptrs-1);
+		final = ptrs;
+	}
+	else if(i_block-indirect_blocks<double_blocks){
+		offset[n++] = BLKSIZE_BITS+2;
+		offset[n++] = i_block >> (ptrs_bits*2);
+		offset[n++] = (i_block >> ptrs_bits)&(ptrs-1);
+		offset[n++] = i_block &(ptrs-1);
+		final = ptrs;
+	}
+	else
+	{
+		xdfs_printk("warning: block>big\n");
+	}
+	if(boundary)
+	{
+		*boundary == (i_block&(ptrs-1)) == (final -1);
+	}
+	return n;
+}
+
+static Indirect* xdfs_get_branch(struct inode*inode,int depth,int*offsets Indirect chain[4],int*err)
+{
+	struct super_block*sb = inode->i_sb;
+	Indirect *p = chain;
+	struct buffer_head* bh;
+
+	xdfs_printk("get_branch is called \n");
+
+	*err =0;
+
+	add_chain(chain,NULL,XDFS_I(inode)->i_data+*offsets);
+	if(!p->key)
+	{
+		goto no_block;
+	}
+	while(--depth)
+	{
+		bh = sb_bread(sb,p->key);
+		if(!bh)
+		{
+			goto failure;
+		}
+		if(!verify_chain(chain,p))
+		{
+			goto changed;
+		}
+		add_chain(++p,bh,bh->b_data);
+	}
+}
+
+
 static struct inode_operations xdfs_inode_operations = {
     //这个地方我觉得编写的有问题//是否需要
 	.listxattr	    = xdfs_listxattr,
@@ -1573,6 +1671,7 @@ xdfs_readdir(struct file *file, struct dir_context *ctx)
 
 #ifdef XDFS_DEBUG
 	printk("XDFS: readdir is called\n");
+	printk("XDFS: file->inode->i_ino = %d\n",inode->i_ino);
 #endif
 
 	for ( ; n < npages; n++, offset = 0) {
@@ -1587,6 +1686,15 @@ xdfs_readdir(struct file *file, struct dir_context *ctx)
 		}
 		/* find dir_entry in data space */
 		de = (struct xdfs_dir_entry *)(kaddr+offset);
+#ifdef XDFS_DEBUG
+		printk("------------------------\n");
+		for(int i=0;i<512;i++)
+		{
+				printk("%x %x %x %x %x %x %x %x|%d line\n",*((char*)kaddr+i*8+0),*((char*)kaddr+i*8+1),*((char*)kaddr+i*8+2),*((char*)kaddr+i*8+3),*((char*)kaddr+i*8+4),*((char*)kaddr+i*8+5),*((char*)kaddr+i*8+6),*((char*)kaddr+i*8+7),i);
+
+		}
+		printk("------------------------\n");
+#endif
 
 		
 		last_byte = inode->i_size -( n << PAGE_SHIFT);

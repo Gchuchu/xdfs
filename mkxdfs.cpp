@@ -422,9 +422,11 @@ printf("part 1 is OK\n");
 			if(i==0&&j==2)
 			{
 				struct xdfs_inode* root_inode = (struct xdfs_inode*)p_inode_set;
+				root_inode->inode_no = XDFS_ROOT_INO;
 				root_inode->num_link = 1;
 				root_inode->uid = 0;
 				root_inode->gid = 0;
+				root_inode->file_blockno = DS_BLKNO;
 				root_inode->using_block_num = 1;
 				// root_inode->addr[0] = DS_BLKNO;
 				root_inode->file_size = sizeof(struct xdfs_dir_entry);
@@ -597,7 +599,7 @@ printf("DATA_SPACE START\n");
 	strcpy(de->name,str);
 	de->inode_no = 3;
 	de->name_len = name_len;
-	de->dir_entry_len = sizeof(de);
+	de->dir_entry_len = sizeof(de)+name_len-1;
 	if (de == NULL)
     	return (ERROR);
 	write(devfd, de, sizeof(struct xdfs_dir_entry));
