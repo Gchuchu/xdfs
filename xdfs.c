@@ -1754,16 +1754,16 @@ xdfs_get_page(struct inode *dir, unsigned long n, int quiet, void **page_addr)
 		return &folio->page;
 	*page_addr = kmap_local_folio(folio, n & (folio_nr_pages(folio) - 1));
 	/* i don't know function of this part, so I comment this part */
-	// if (unlikely(!folio_test_checked(folio))) {
+	if (unlikely(!folio_test_checked(folio))) {
 	// 	if (!ext2_check_page(&folio->page, quiet, *page_addr))
-	// 		goto fail;
-	// }
+		goto fail;
+	}
 	xdfs_printk("xdfs_get_page return \n");
 	return &folio->page;
 
-// fail:
-// 	xdfs_put_page(&folio->page, *page_addr);
-// 	return ERR_PTR(-EIO);
+fail:
+	xdfs_put_page(&folio->page, *page_addr);
+	return ERR_PTR(-EIO);
 }
 
 static inline void 

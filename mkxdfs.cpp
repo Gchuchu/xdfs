@@ -592,16 +592,23 @@ printf("DATA_SPACE START\n");
 	// free(a);
 
 	struct xdfs_dir_entry* de;
-	const char *str = "what";
+	const char *str1 = ".";
+	const char *str2 = "..";
 	int name_len = strlen(str);
 	de = (struct xdfs_dir_entry *)malloc(sizeof(struct xdfs_dir_entry));
+	if (de == NULL)
+    	return (ERROR);
 	de->file_type = FT_DIR;
-	strcpy(de->name,str);
+	strcpy(de->name,str1);
 	de->inode_no = 3;
 	de->name_len = name_len;
 	de->dir_entry_len = sizeof(de)+name_len-1;
-	if (de == NULL)
-    	return (ERROR);
+	write(devfd, de, sizeof(struct xdfs_dir_entry));
+
+	strcpy(de->name,str2);
+	de->inode_no = 4;
+	de->name_len = name_len;
+	de->dir_entry_len = sizeof(de)+name_len-1;
 	write(devfd, de, sizeof(struct xdfs_dir_entry));
 	// memset(de, 0x00, sizeof(struct xdfs_dir_entry));	/*缓冲区置0x00*/
 	free(de);
